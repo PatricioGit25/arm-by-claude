@@ -120,13 +120,15 @@ const holder: Holder = (g.__armDb ??= {});
  * `psql '...'` que muestra Neon o `DATABASE_URL=` copiado de un .env.
  */
 export function cleanDatabaseUrl(raw: string | undefined): string | undefined {
-  if (!raw) return undefined;
-  let url = raw.trim().replace(/^DATABASE_URL\s*=\s*/i, "").replace(/^psql\s+/i, "").trim();
-  url = url.replace(/^['"]|['"]$/g, "").trim();
-  if (!url) return undefined;
-  if (!/^postgres(ql)?:\/\//i.test(url)) {
-    throw new Error("DATABASE_URL no es válida: tiene que empezar por postgresql:// (revisa la variable en Vercel)");
+  if (!raw?.trim()) return undefined;
+  // Si se pegó un bloque .env entero (como el que da Neon), usa la línea
+  // DATABASE_URL= y, si no está, la primera URL postgres que aparezca.
+  const line = raw.match(/^\s*DATABASE_URL\s*=\s*(.+)$/im)?.[1];
+  const found = (line ?? raw).match(/postgres(?:ql)?:\/\/[^\s'"]+/i)?.[0];
+  if (!found) {
+    throw new Error("DATABASE_URL no es válida: tiene que contener una dirección postgresql:// (revisa la variable en Vercel)");
   }
+  let url = found;
   // pg trata sslmode=require como verify-full; con Neon basta TLS normal.
   return url.replace(/([?&])channel_binding=require&?/, "$1").replace(/[?&]$/, "");
 }
