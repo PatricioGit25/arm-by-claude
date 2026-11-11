@@ -65,6 +65,16 @@ Programa dos llamadas con `Authorization: Bearer $CRON_SECRET`:
 - `GET /api/cron/followups` cada hora (seguimientos)
 - `GET /api/cron/daily` una vez al día, p. ej. a las 8:00 (resumen de la mañana)
 
+En **Vercel** ya vienen configurados en `vercel.json` (Vercel envía `CRON_SECRET` solo). En el plan gratuito
+los crons corren una vez al día, así que los seguimientos se envían a diario en vez de cada hora.
+
+### Publicar gratis (Vercel + Neon)
+
+1. **Neon** (neon.tech): crea un proyecto y copia la *connection string* (pooled).
+2. **Vercel** (vercel.com): *Add New → Project*, importa este repo y añade las variables
+   `DATABASE_URL`, `AUTH_SECRET` y `CRON_SECRET`. Sin `ANTHROPIC_API_KEY` funciona en modo demo.
+3. *Deploy*. La primera visita crea las tablas y la inmobiliaria de ejemplo.
+
 ### WhatsApp Business
 
 1. Crea una app en Meta for Developers con WhatsApp Cloud API y un número verificado.
