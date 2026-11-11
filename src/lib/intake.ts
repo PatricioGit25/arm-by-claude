@@ -5,9 +5,9 @@
  * La IA (o el modo demo) extrae los datos, crea o actualiza la ficha y redacta
  * el primer mensaje al cliente.
  */
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "./db";
-import { leads, messages, properties, type Agency, type Lang, type Lead, type LeadProfile, type Property } from "./db/schema";
+import { events, leads, messages, properties, type Agency, type Lang, type Lead, type LeadProfile, type Property } from "./db/schema";
 import { extractIntakeWithClaude, hasClaude, writeOutreach } from "./agent/claude";
 import { extractProfile } from "./agent/mock";
 import { extractDates, extractGuests } from "./agent/mock-vacation";
@@ -177,12 +177,23 @@ async function upsertLead(agency: Agency, intake: Intake, channel: "portal" | "m
 }
 
 /** Email de aviso de un portal (reenviado al buzón del ARM o pegado en el panel). */
-export async function ingestPortalEmail(agency: Agency, email: { from?: string; subject?: string; text: string }) {
+export async function ingestPortalEmail(agency: Agency, email: { from?: string; subject?: string; text: string; messageId?: string }) {
   const db = await getDb();
   const text = email.text.slice(0, 20000);
+  // Idempotencia: el mismo email reenviado dos veces no crea dos contactos.
+  if (email.messageId) {
+    const seen = await db.select({ id: events.id }).from(events).where(and(
+      eq(events.agencyId, agency.id), eq(events.type, "inbound_email"), sql`${events.data}->>'messageId' = ${email.messageId}`,
+    )).limit(1);
+    if (seen.length) return { ok: false as const, duplicate: true, error: "Este email ya se había recibido." };
+  }
   const catalog = await db.select().from(properties).where(eq(properties.agencyId, agency.id));
   const intake = await extract("email", text, agency, catalog, email);
+  const log = (data: Record<string, unknown>) => logEvent(agency.id, (data.leadId as string) ?? null, "inbound_email", {
+    from: email.from, subject: email.subject, messageId: email.messageId, ...data,
+  });
   if (!intake.phone && !intake.email && !intake.clientMessage) {
+    await log({ ok: false, preview: text.slice(0, 1500) });
     return { ok: false as const, error: "No encontré datos de un cliente en ese email (ni teléfono, ni email, ni mensaje)." };
   }
   const source = intake.portal ?? "Portal";
@@ -196,6 +207,7 @@ export async function ingestPortalEmail(agency: Agency, email: { from?: string; 
     stage: ["seguimiento", "perdido"].includes(lead.stage) ? "calificando" : lead.stage,
   }).where(eq(leads.id, lead.id)).returning();
   await logEvent(agency.id, lead.id, "portal_lead", { portal: source, ref: prop?.ref });
+  await log({ ok: true, leadId: lead.id, portal: source });
   await notify(agency, lead, "portal", `📥 Nuevo contacto de ${source}: ${lead.name ?? lead.phone ?? lead.email ?? "sin nombre"}`,
     `${prop ? `${prop.ref} · ${prop.title}\n` : ""}${body.slice(0, 300)}`);
   if (lead.aiPaused) return { ok: true as const, lead, reply: null };

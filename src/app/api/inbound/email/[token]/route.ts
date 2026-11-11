@@ -35,6 +35,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
   const result = await ingestPortalEmail(agency, {
     from: str(b.From, b.from, b.sender, envelope.from, headers.from, headers.From),
     subject: str(b.Subject, b.subject, headers.subject, headers.Subject),
+    messageId: str(b.messageId, b.MessageID, b["Message-Id"], headers["message-id"], headers["Message-ID"]),
     text,
   });
   return NextResponse.json(result.ok ? { ok: true, leadId: result.lead.id } : { ok: false, error: result.error });

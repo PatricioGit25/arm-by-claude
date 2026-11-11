@@ -8,6 +8,7 @@ const NAV = [
   { href: "/app", label: "Resumen" },
   { href: "/app/leads", label: "Leads" },
   { href: "/app/nuevo", label: "+ Nuevo cliente" },
+  { href: "/app/conectar", label: "Conectar Idealista" },
   { href: "/app/properties", label: "Propiedades" },
   { href: "/app/settings", label: "Ajustes" },
 ];

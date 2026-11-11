@@ -1,4 +1,3 @@
-import { headers } from "next/headers";
 import { requireUser } from "@/lib/auth";
 import { ActionForm } from "@/components/ActionForm";
 import { DictationTextarea } from "@/components/DictationTextarea";
@@ -8,8 +7,6 @@ export const dynamic = "force-dynamic";
 
 export default async function NewLeadPage() {
   const { agency } = await requireUser();
-  const h = await headers();
-  const base = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host")}`;
   const vacation = agency.vertical === "vacacional";
 
   return (
@@ -46,6 +43,7 @@ export default async function NewLeadPage() {
             <label className="label">Nota</label>
             <DictationTextarea
               name="note"
+              serverStt={!!process.env.ELEVENLABS_API_KEY}
               placeholder={vacation
                 ? "Ej.: Llamó Ana, son 4 con un perro, del 10 al 17 de agosto, quiere piscina. Teléfono 600 123 456."
                 : "Ej.: Llamó Juan, sueco, busca piso de 2 habitaciones en Nerja, hasta 250 mil, al contado. Teléfono +46 70 123 45 67."}
@@ -64,10 +62,9 @@ export default async function NewLeadPage() {
           <textarea name="email" rows={9} className="input" placeholder="Pega aquí el email completo del portal…" required />
         </ActionForm>
         <div className="mt-5 rounded-xl bg-panel2 p-3 text-xs text-mute">
-          <p className="font-semibold text-white">Para que entren solos</p>
-          <p className="mt-1">Reenvía automáticamente los emails del portal a un servicio de correo entrante (Postmark, CloudMailin, Make, Zapier…) que los envíe a este buzón:</p>
-          <code className="mt-2 block break-all rounded-lg bg-ink p-2 text-arm">{base}/api/inbound/email/{agency.inboundToken}</code>
-          <p className="mt-2">Es privado: quien tenga esta dirección puede crear contactos en tu cuenta.</p>
+          <p className="font-semibold text-white">¿Quieres que entren solos, sin pegar nada?</p>
+          <p className="mt-1">Conecta tu correo una sola vez y cada aviso de Idealista llegará al ARM en 1 minuto.</p>
+          <a className="mt-2 inline-block text-arm underline" href="/app/conectar">Conectar Idealista →</a>
         </div>
       </section>
     </div>

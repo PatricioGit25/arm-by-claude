@@ -39,8 +39,9 @@ Demo: `/chat/south-costa-demo` y panel con `demo-vacacional@arm.local` / `demo12
 
 **+ Nuevo cliente** en el panel:
 
-- **Llamada o visita a la oficina**: el agente dicta (botón 🎤, usa el dictado del navegador) o escribe una nota. La IA crea la ficha (nombre, teléfono, qué busca, idioma), busca propiedades que encajan y redacta el primer WhatsApp, que se envía con un toque desde el WhatsApp del agente.
+- **Llamada o visita a la oficina**: el agente dicta (botón 🎤: graba y transcribe con ElevenLabs si hay `ELEVENLABS_API_KEY`; si no, dictado del navegador o el micrófono del teclado) o escribe una nota. La IA crea la ficha (nombre, teléfono, qué busca, idioma), busca propiedades que encajan y redacta el primer WhatsApp, que se envía con un toque desde el WhatsApp del agente.
 - **Email de Idealista u otro portal**: se pega el email de aviso y la IA saca los datos del cliente, crea la ficha y prepara la respuesta.
+- **Conectar Idealista** (panel): un pequeño programa de Google Apps Script, ya preparado con el buzón de la agencia, revisa el Gmail cada minuto y envía al ARM cada aviso de contacto de los portales. Se instala copiando y pegando. Los emails repetidos se ignoran y los que no son contactos (resúmenes, publicidad) no crean fichas.
 - **Buzón automático**: cada agencia tiene una dirección privada `/api/inbound/email/<token>` (en Ajustes) que acepta emails reenviados por servicios de correo entrante (Postmark, CloudMailin, Mailgun, SendGrid, Make, Zapier…) en JSON o formulario.
 
 Si el mismo teléfono o email vuelve a aparecer por otro canal, se une a la ficha existente en vez de duplicarla. Las notas internas nunca se muestran al cliente.
