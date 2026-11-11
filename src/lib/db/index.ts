@@ -115,31 +115,65 @@ type Holder = { promise?: Promise<DB> };
 const g = globalThis as unknown as { __armDb?: Holder };
 const holder: Holder = (g.__armDb ??= {});
 
+/**
+ * Limpia errores típicos al pegar la URL: comillas, espacios, el prefijo
+ * `psql '...'` que muestra Neon o `DATABASE_URL=` copiado de un .env.
+ */
+export function cleanDatabaseUrl(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  let url = raw.trim().replace(/^DATABASE_URL\s*=\s*/i, "").replace(/^psql\s+/i, "").trim();
+  url = url.replace(/^['"]|['"]$/g, "").trim();
+  if (!url) return undefined;
+  if (!/^postgres(ql)?:\/\//i.test(url)) {
+    throw new Error("DATABASE_URL no es válida: tiene que empezar por postgresql:// (revisa la variable en Vercel)");
+  }
+  // pg trata sslmode=require como verify-full; con Neon basta TLS normal.
+  return url.replace(/([?&])channel_binding=require&?/, "$1").replace(/[?&]$/, "");
+}
+
+// Evita que dos arranques en frío creen tablas o datos de ejemplo a la vez.
+const LOCK = "SELECT pg_advisory_lock(727274);";
+const UNLOCK = "SELECT pg_advisory_unlock(727274);";
+
 async function connect(): Promise<DB> {
-  const url = process.env.DATABASE_URL;
+  const url = cleanDatabaseUrl(process.env.DATABASE_URL);
   if (url) {
     const { Pool } = await import("pg");
-    const pool = new Pool({ connectionString: url });
-    await pool.query(BOOTSTRAP_SQL);
+    const pool = new Pool({ connectionString: url, max: 3, connectionTimeoutMillis: 15_000, idleTimeoutMillis: 10_000 });
+    const client = await pool.connect();
+    try {
+      await client.query(LOCK);
+      await client.query(BOOTSTRAP_SQL);
+      const db = drizzlePg(client, { schema }) as unknown as DB;
+      const { seedIfEmpty } = await import("../seed");
+      await seedIfEmpty(db);
+    } finally {
+      await client.query(UNLOCK).catch(() => {});
+      client.release();
+    }
     return drizzlePg(pool, { schema }) as unknown as DB;
+  }
+  if (process.env.VERCEL) {
+    throw new Error("Falta DATABASE_URL en las variables de entorno de Vercel");
   }
   const { PGlite } = await import("@electric-sql/pglite");
   const dataDir = process.env.PGLITE_DIR ?? "./.data/pglite";
   if (dataDir !== "memory") (await import("node:fs")).mkdirSync(dataDir, { recursive: true });
   const client = dataDir === "memory" ? new PGlite() : new PGlite(dataDir);
   await client.exec(BOOTSTRAP_SQL);
-  return drizzlePglite(client, { schema });
+  const db = drizzlePglite(client, { schema });
+  const { seedIfEmpty } = await import("../seed");
+  await seedIfEmpty(db);
+  return db;
 }
 
 export async function getDb(): Promise<DB> {
   if (!holder.promise) {
-    holder.promise = (async () => {
-      const db = await connect();
-      const { seedIfEmpty } = await import("../seed");
-      await seedIfEmpty(db);
-      return db;
-    })();
-    holder.promise.catch(() => (holder.promise = undefined));
+    holder.promise = connect();
+    holder.promise.catch((err) => {
+      console.error("[ARM] No se pudo conectar a la base de datos:", err);
+      holder.promise = undefined;
+    });
   }
   return holder.promise;
 }
