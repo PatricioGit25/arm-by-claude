@@ -11,8 +11,8 @@ export default function LoginPage() {
       <div className="card">
         <h1 className="mb-4 text-lg font-semibold">Entrar al panel</h1>
         <ActionForm action={loginAction} submit="Entrar">
-          <div><label className="label">Email</label><input name="email" type="email" className="input" defaultValue={DEMO_EMAIL} required /></div>
-          <div><label className="label">Contraseña</label><input name="password" type="password" className="input" defaultValue={DEMO_PASSWORD} required /></div>
+          <div><label className="label">Email</label><input name="email" type="email" autoCapitalize="none" autoCorrect="off" autoComplete="username" className="input" defaultValue={DEMO_EMAIL} required /></div>
+          <div><label className="label">Contraseña</label><input name="password" type="password" autoCapitalize="none" autoCorrect="off" autoComplete="current-password" className="input" defaultValue={DEMO_PASSWORD} required /></div>
         </ActionForm>
         <p className="mt-4 text-xs text-mute">Demo: {DEMO_EMAIL} / {DEMO_PASSWORD}</p>
       </div>

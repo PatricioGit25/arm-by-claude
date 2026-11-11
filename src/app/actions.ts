@@ -13,11 +13,16 @@ export type FormState = { error?: string; ok?: string } | undefined;
 
 export async function loginAction(_: FormState, form: FormData): Promise<FormState> {
   const email = String(form.get("email") ?? "").trim().toLowerCase();
-  const password = String(form.get("password") ?? "");
-  const db = await getDb();
-  const user = (await db.select().from(users).where(eq(users.email, email)))[0];
-  if (!user || !(await bcrypt.compare(password, user.passwordHash))) return { error: "Email o contraseña incorrectos" };
-  await createSession(user.id);
+  const password = String(form.get("password") ?? "").trim();
+  try {
+    const db = await getDb();
+    const user = (await db.select().from(users).where(eq(users.email, email)))[0];
+    if (!user || !(await bcrypt.compare(password, user.passwordHash))) return { error: "Email o contraseña incorrectos" };
+    await createSession(user.id);
+  } catch (err) {
+    console.error("[ARM] Error en el login:", err);
+    return { error: `No se pudo iniciar sesión: ${err instanceof Error ? err.message : "error del servidor"}` };
+  }
   redirect("/app");
 }
 

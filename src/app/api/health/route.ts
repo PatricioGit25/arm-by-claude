@@ -17,8 +17,8 @@ export async function GET() {
   };
   try {
     const db = await getDb();
-    const r = await db.execute(sql`select (select count(*) from agencies)::int as agencies, (select count(*) from leads)::int as leads`);
-    const row = (Array.isArray(r) ? r[0] : (r as { rows: unknown[] }).rows[0]) as { agencies: number; leads: number };
+    const r = await db.execute(sql`select (select count(*) from agencies)::int as agencies, (select count(*) from leads)::int as leads, (select count(*) from users)::int as users`);
+    const row = (Array.isArray(r) ? r[0] : (r as { rows: unknown[] }).rows[0]) as { agencies: number; leads: number; users: number };
     return NextResponse.json({ ok: true, database: "conectada", ...row, env }, { headers: UTF8 });
   } catch (err) {
     const message = (err instanceof Error ? err.message : String(err)).replace(/postgres(ql)?:\/\/[^\s]+/gi, "postgresql://***");
