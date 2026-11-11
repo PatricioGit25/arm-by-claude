@@ -1,5 +1,5 @@
-import type { Stage } from "@/lib/db/schema";
-import { STAGE_LABEL } from "@/lib/scoring";
+import type { Stage, Vertical } from "@/lib/db/schema";
+import { stageLabel } from "@/lib/scoring";
 
 const COLORS: Record<Stage, string> = {
   nuevo: "bg-white/10 text-white",
@@ -10,10 +10,13 @@ const COLORS: Record<Stage, string> = {
   oferta: "bg-orange-400/15 text-orange-300",
   cerrado: "bg-arm text-ink",
   perdido: "bg-red-500/10 text-red-300",
+  reservado: "bg-arm/15 text-arm",
+  huesped: "bg-teal-400/15 text-teal-300",
+  incidencia: "bg-red-500/20 text-red-300",
 };
 
-export function StageBadge({ stage }: { stage: Stage }) {
-  return <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${COLORS[stage]}`}>{STAGE_LABEL[stage]}</span>;
+export function StageBadge({ stage, vertical = "venta" }: { stage: Stage; vertical?: Vertical }) {
+  return <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${COLORS[stage]}`}>{stageLabel(stage, vertical)}</span>;
 }
 
 export function ScoreBar({ score, threshold = 70 }: { score: number; threshold?: number }) {

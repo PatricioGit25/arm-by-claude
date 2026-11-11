@@ -20,10 +20,21 @@ export default async function Dashboard() {
         <p className="text-sm text-mute">Hola {user.name.split(" ")[0]}, esto es lo que hizo tu ARM mientras no mirabas.</p>
 
         <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Stat label="Clientes que entraron (24 h)" value={s.entered24} />
-          <Stat label="Listos para comprar" value={s.ready} hot />
-          <Stat label="En calificación / seguimiento" value={s.following} />
-          <Stat label="Mensajes de la IA (24 h)" value={s.aiMessages24} />
+          {s.vacation ? (
+            <>
+              <Stat label="Consultas nuevas (24 h)" value={s.entered24} />
+              <Stat label="Quieren reservar" value={s.ready} hot />
+              <Stat label="Incidencias abiertas" value={s.incidents} alert={s.incidents > 0} />
+              <Stat label="Mensajes de la IA (24 h)" value={s.aiMessages24} />
+            </>
+          ) : (
+            <>
+              <Stat label="Clientes que entraron (24 h)" value={s.entered24} />
+              <Stat label="Listos para comprar" value={s.ready} hot />
+              <Stat label="En calificación / seguimiento" value={s.following} />
+              <Stat label="Mensajes de la IA (24 h)" value={s.aiMessages24} />
+            </>
+          )}
         </div>
         {s.afterHours > 0 && (
           <p className="mt-3 text-sm text-mute">🌙 {s.afterHours} cliente(s) escribieron fuera de horario y recibieron respuesta al instante.</p>
@@ -71,10 +82,10 @@ export default async function Dashboard() {
   );
 }
 
-function Stat({ label, value, hot }: { label: string; value: number; hot?: boolean }) {
+function Stat({ label, value, hot, alert }: { label: string; value: number; hot?: boolean; alert?: boolean }) {
   return (
-    <div className="rounded-xl bg-panel2 p-4">
-      <p className={`text-3xl font-black tabular-nums ${hot ? "text-hot" : ""}`}>{value}</p>
+    <div className={`rounded-xl p-4 ${alert ? "bg-red-500/15" : "bg-panel2"}`}>
+      <p className={`text-3xl font-black tabular-nums ${alert ? "text-red-300" : hot ? "text-hot" : ""}`}>{value}</p>
       <p className="mt-1 text-xs text-mute">{label}</p>
     </div>
   );

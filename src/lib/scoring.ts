@@ -1,12 +1,13 @@
-import type { LeadProfile, Property, Stage } from "./db/schema";
+import type { LeadProfile, Property, Stage, Vertical } from "./db/schema";
 
 /**
- * Puntaje 0-100 de "intención de compra". Determinista y explicable: el agente
- * inmobiliario puede ver por qué un lead se considera listo.
+ * Puntaje 0-100 de intención (comprar o reservar). Determinista y explicable:
+ * el equipo puede ver por qué un lead se considera listo.
  */
 export function scoreLead(
   profile: LeadProfile,
   opts: { inboundCount: number; hasContact: boolean },
+  vertical: Vertical = "venta",
 ): { score: number; reasons: string[] } {
   let score = 0;
   const reasons: string[] = [];
@@ -14,6 +15,16 @@ export function scoreLead(
     score += n;
     reasons.push(`+${n} ${why}`);
   };
+
+  if (vertical === "vacacional") {
+    if (profile.check_in) add(25, "fechas definidas");
+    if (profile.guests) add(15, "sabe cuántas personas son");
+    if (profile.property_ref || profile.zones?.length || profile.property_type) add(10, "sabe qué alojamiento o zona quiere");
+    if (profile.wants_booking) add(30, "quiere reservar");
+    if (opts.hasContact) add(10, "dejó teléfono o email");
+    if (opts.inboundCount >= 3) add(10, "conversación activa");
+    return { score: Math.min(100, score), reasons };
+  }
 
   if (profile.budget_max) add(20, "presupuesto definido");
   if (profile.property_type) add(10, "sabe qué tipo de propiedad busca");
@@ -33,8 +44,19 @@ export function scoreLead(
 }
 
 /** ¿Encaja una propiedad con lo que busca el lead? */
-export function propertyMatches(p: Property, profile: LeadProfile): boolean {
+export function propertyMatches(p: Property, profile: LeadProfile, vertical: Vertical = "venta"): boolean {
   if (p.status !== "disponible") return false;
+  if (vertical === "vacacional") {
+    if (!profile.guests && !profile.property_type) return false;
+    if (profile.guests && p.maxGuests && p.maxGuests < profile.guests) return false;
+    if (profile.pets && p.petsAllowed === "no") return false;
+    if (profile.property_type && !sameType(p.type, profile.property_type)) return false;
+    if (profile.zones?.length) {
+      const hay = norm(`${p.town} ${p.zone}`);
+      if (!profile.zones.some((z) => hay.includes(norm(z)))) return false;
+    }
+    return true;
+  }
   if (!profile.budget_max && !profile.property_type) return false;
   if (profile.budget_max && p.price > profile.budget_max * 1.05) return false;
   if (profile.bedrooms_min && p.bedrooms < profile.bedrooms_min) return false;
@@ -47,8 +69,8 @@ export function propertyMatches(p: Property, profile: LeadProfile): boolean {
 }
 
 const TYPE_GROUPS: string[][] = [
-  ["apartamento", "piso", "apartment", "flat", "lagenhet", "atico", "penthouse", "takvaning", "estudio", "studio"],
-  ["casa", "house", "hus", "adosado", "townhouse", "radhus", "villa", "chalet"],
+  ["apartamento", "piso", "apartment", "flat", "lagenhet", "atico", "penthouse", "takvaning", "estudio", "studio", "wohnung", "appartement"],
+  ["casa", "house", "hus", "adosado", "townhouse", "radhus", "villa", "chalet", "haus", "maison"],
   ["terreno", "plot", "land", "tomt"],
 ];
 
@@ -69,14 +91,14 @@ export function norm(s: string): string {
 
 /** Etapa que corresponde según puntaje, sin retroceder etapas que puso un humano. */
 export function nextStage(current: Stage, score: number, threshold: number): Stage {
-  const manual: Stage[] = ["listo", "visita", "oferta", "cerrado", "perdido"];
+  const manual: Stage[] = ["listo", "visita", "oferta", "cerrado", "perdido", "reservado", "huesped", "incidencia"];
   if (manual.includes(current)) return current;
   if (score >= threshold) return "listo";
   if (score > 0) return "calificando";
   return current;
 }
 
-export const STAGE_LABEL: Record<Stage, string> = {
+const LABELS: Record<Stage, string> = {
   nuevo: "Nuevo",
   calificando: "Calificando (IA)",
   seguimiento: "En seguimiento",
@@ -85,7 +107,26 @@ export const STAGE_LABEL: Record<Stage, string> = {
   oferta: "Oferta",
   cerrado: "Cerrado",
   perdido: "Perdido",
+  reservado: "Reservado",
+  huesped: "Huésped (en estancia)",
+  incidencia: "Incidencia abierta",
 };
+
+const VACATION_LABELS: Partial<Record<Stage, string>> = {
+  calificando: "Consultando (IA)",
+  listo: "Quiere reservar",
+};
+
+export function stageLabel(stage: Stage, vertical: Vertical = "venta"): string {
+  return (vertical === "vacacional" && VACATION_LABELS[stage]) || LABELS[stage] || stage;
+}
+
+/** Columnas del pipeline según el tipo de negocio. */
+export function stagesFor(vertical: Vertical): Stage[] {
+  return vertical === "vacacional"
+    ? ["nuevo", "calificando", "seguimiento", "listo", "reservado", "huesped", "incidencia", "perdido"]
+    : ["nuevo", "calificando", "seguimiento", "listo", "visita", "oferta", "cerrado", "perdido"];
+}
 
 export function formatPrice(n: number): string {
   return new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n);

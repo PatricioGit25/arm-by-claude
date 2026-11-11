@@ -9,9 +9,15 @@ export default function SignupPage() {
       <Link href="/" className="mb-8 text-center"><Logo className="text-3xl" /></Link>
       <div className="card">
         <h1 className="mb-1 text-lg font-semibold">Crear inmobiliaria</h1>
-        <p className="mb-4 text-sm text-mute">Cada inmobiliaria tiene su propio asistente, catálogo, leads y equipo.</p>
+        <p className="mb-4 text-sm text-mute">Cada agencia tiene su propio asistente, catálogo, clientes y equipo.</p>
         <ActionForm action={signupAction} submit="Crear cuenta">
           <div><label className="label">Nombre de la inmobiliaria</label><input name="agency" className="input" required /></div>
+          <div><label className="label">Tipo de negocio</label>
+            <select name="vertical" className="input">
+              <option value="venta">Inmobiliaria (venta)</option>
+              <option value="vacacional">Alquiler vacacional</option>
+            </select>
+          </div>
           <div><label className="label">Pueblo / zona</label><input name="town" className="input" placeholder="Nerja" /></div>
           <div><label className="label">Tu nombre</label><input name="name" className="input" required /></div>
           <div><label className="label">Email</label><input name="email" type="email" className="input" required /></div>

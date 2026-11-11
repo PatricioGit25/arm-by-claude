@@ -8,7 +8,11 @@ import {
   jsonb,
 } from "drizzle-orm/pg-core";
 
-export type Lang = "es" | "en" | "sv";
+export type Lang = "es" | "en" | "sv" | "de" | "fr";
+export const LANGS: Lang[] = ["es", "en", "sv", "de", "fr"];
+
+/** Tipo de negocio de la inmobiliaria. */
+export type Vertical = "venta" | "vacacional";
 
 export const STAGES = [
   "nuevo",
@@ -19,6 +23,10 @@ export const STAGES = [
   "oferta",
   "cerrado",
   "perdido",
+  // alquiler vacacional
+  "reservado",
+  "huesped",
+  "incidencia",
 ] as const;
 export type Stage = (typeof STAGES)[number];
 
@@ -38,6 +46,14 @@ export interface LeadProfile {
   purpose?: string; // vivir, vacaciones, inversión, alquilar
   wants_visit?: boolean;
   notes?: string;
+  // alquiler vacacional
+  check_in?: string; // AAAA-MM-DD o texto
+  check_out?: string;
+  guests?: number;
+  pets?: boolean;
+  budget_night?: number;
+  property_ref?: string;
+  wants_booking?: boolean;
 }
 
 export const agencies = pgTable("agencies", {
@@ -50,6 +66,8 @@ export const agencies = pgTable("agencies", {
   agentPhone: text("agent_phone"),
   waPhoneNumberId: text("wa_phone_number_id"),
   assistantName: text("assistant_name").notNull().default("Sofía"),
+  vertical: text("vertical").$type<Vertical>().notNull().default("venta"),
+  knowledge: text("knowledge").notNull().default(""), // normas y preguntas frecuentes
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -79,6 +97,10 @@ export const properties = pgTable("properties", {
   description: text("description").notNull().default(""),
   features: jsonb("features").$type<string[]>().notNull().default([]),
   status: text("status").notNull().default("disponible"), // disponible | reservada | vendida
+  maxGuests: integer("max_guests").notNull().default(0),
+  petsAllowed: text("pets_allowed").notNull().default("consultar"), // si | no | consultar
+  bookingUrl: text("booking_url"),
+  guestInfo: text("guest_info").notNull().default(""), // privado: solo para huéspedes confirmados
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -105,6 +127,7 @@ export const leads = pgTable("leads", {
   lastOutboundAt: timestamp("last_outbound_at", { withTimezone: true }),
   handedOffAt: timestamp("handed_off_at", { withTimezone: true }),
   lostReason: text("lost_reason"),
+  guestPropertyId: uuid("guest_property_id"), // huésped confirmado de esta propiedad
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

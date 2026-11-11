@@ -1,88 +1,135 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
-import type { Property } from "../db/schema";
+import type { Lead, Property, Vertical } from "../db/schema";
 import { formatPrice, norm, sameType } from "../scoring";
 import type { TurnState } from "./types";
 
-export const TOOLS: Anthropic.Tool[] = [
-  {
-    name: "search_properties",
-    description:
-      "Busca en el catálogo REAL de la inmobiliaria. Úsala siempre antes de recomendar o mencionar una propiedad; nunca inventes propiedades, precios ni características. Todos los filtros son opcionales.",
-    input_schema: {
-      type: "object",
-      properties: {
-        type: { type: "string", description: "apartamento, atico, estudio, casa, villa o terreno" },
-        max_price: { type: "integer", description: "Precio máximo en euros" },
-        min_bedrooms: { type: "integer" },
-        town_or_zone: { type: "string", description: "Pueblo o zona, p. ej. Nerja, Frigiliana, Burriana" },
-        ref: { type: "string", description: "Referencia exacta si el comprador pregunta por una propiedad concreta" },
-      },
-      additionalProperties: false,
-    },
-  },
-  {
-    name: "update_lead_profile",
-    description:
-      "Guarda en el CRM cualquier dato nuevo que el comprador haya dado. Llámala cada vez que aprendas algo (nombre, contacto, qué busca, presupuesto, plazo, financiación, si quiere visitar). Solo incluye los campos que sabes con certeza.",
-    input_schema: {
-      type: "object",
-      properties: {
-        name: { type: "string" },
-        email: { type: "string" },
-        phone: { type: "string" },
-        language: { type: "string", enum: ["es", "en", "sv"], description: "Idioma en el que escribe el comprador" },
-        property_type: { type: "string", description: "apartamento, atico, estudio, casa, villa o terreno" },
-        bedrooms_min: { type: "integer" },
-        budget_max: { type: "integer", description: "Presupuesto máximo en euros" },
-        zones: { type: "array", items: { type: "string" } },
-        timeline_months: { type: "integer", description: "En cuántos meses quiere comprar (0 = ya)" },
-        financing: { type: "string", enum: ["contado", "hipoteca_aprobada", "hipoteca_pendiente", "desconocido"] },
-        purpose: { type: "string", description: "vivir, segunda residencia, inversión, jubilación..." },
-        wants_visit: { type: "boolean" },
-        notes: { type: "string", description: "Otros detalles relevantes (mascotas, piscina, garaje...)" },
-      },
-      additionalProperties: false,
-    },
-  },
-  {
-    name: "schedule_visit",
-    description:
-      "Registra una solicitud de visita. El agente inmobiliario la confirmará. Úsala cuando el comprador quiera ver una propiedad e indique cuándo puede.",
-    input_schema: {
-      type: "object",
-      properties: {
-        property_ref: { type: "string" },
-        preferred_time: { type: "string", description: "Cuándo puede el comprador, tal y como lo dijo" },
-      },
-      required: ["preferred_time"],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: "handoff_to_agent",
-    description:
-      "Pasa el lead a un agente humano. Úsala cuando el comprador esté listo para comprar (presupuesto + plazo cercano + financiación o visita), cuando quiera hacer una oferta o negociar, cuando pida hablar con una persona o cuando pregunte algo legal/fiscal que no debes responder.",
-    input_schema: {
-      type: "object",
-      properties: {
-        reason: { type: "string", description: "Por qué se pasa ahora" },
-        summary: {
-          type: "string",
-          description: "Resumen en ESPAÑOL para el agente: quién es, qué busca, presupuesto, plazo, financiación, propiedades de interés y próximo paso.",
+const PROFILE_FIELDS_COMMON = {
+  name: { type: "string" },
+  email: { type: "string" },
+  phone: { type: "string" },
+  language: { type: "string", enum: ["es", "en", "sv", "de", "fr"], description: "Idioma en el que escribe el cliente" },
+  property_type: { type: "string", description: "apartamento, atico, estudio, casa, villa..." },
+  zones: { type: "array", items: { type: "string" } },
+  notes: { type: "string", description: "Otros detalles relevantes" },
+} as const;
+
+const PROFILE_FIELDS_SALE = {
+  bedrooms_min: { type: "integer" },
+  budget_max: { type: "integer", description: "Presupuesto máximo de compra en euros" },
+  timeline_months: { type: "integer", description: "En cuántos meses quiere comprar (0 = ya)" },
+  financing: { type: "string", enum: ["contado", "hipoteca_aprobada", "hipoteca_pendiente", "desconocido"] },
+  purpose: { type: "string", description: "vivir, segunda residencia, inversión, jubilación..." },
+  wants_visit: { type: "boolean" },
+} as const;
+
+const PROFILE_FIELDS_VACATION = {
+  check_in: { type: "string", description: "Fecha de llegada, AAAA-MM-DD si se sabe" },
+  check_out: { type: "string", description: "Fecha de salida, AAAA-MM-DD si se sabe" },
+  guests: { type: "integer", description: "Número total de personas" },
+  pets: { type: "boolean", description: "Viaja con mascota" },
+  budget_night: { type: "integer", description: "Presupuesto por noche en euros" },
+  property_ref: { type: "string", description: "Alojamiento que le interesa (referencia)" },
+  wants_booking: { type: "boolean", description: "Quiere reservar o confirmar disponibilidad" },
+} as const;
+
+export function toolsFor(vertical: Vertical): Anthropic.Tool[] {
+  const vacation = vertical === "vacacional";
+  const tools: Anthropic.Tool[] = [
+    {
+      name: "search_properties",
+      description:
+        "Busca en el catálogo REAL de la agencia. Úsala siempre antes de recomendar o mencionar un alojamiento o propiedad; nunca inventes propiedades, precios ni características. Todos los filtros son opcionales.",
+      input_schema: {
+        type: "object",
+        properties: {
+          type: { type: "string", description: "apartamento, atico, estudio, casa, villa" },
+          ...(vacation
+            ? { guests: { type: "integer", description: "Personas que se alojan" }, pets: { type: "boolean" } }
+            : { max_price: { type: "integer", description: "Precio máximo en euros" }, min_bedrooms: { type: "integer" } }),
+          town_or_zone: { type: "string", description: "Pueblo o zona" },
+          ref: { type: "string", description: "Referencia exacta si pregunta por una propiedad concreta" },
+          text: { type: "string", description: "Palabra a buscar en nombre o características (piscina, terraza, vistas al mar...)" },
         },
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "update_lead_profile",
+      description:
+        "Guarda en el CRM cualquier dato nuevo que haya dado el cliente. Llámala cada vez que aprendas algo. Solo incluye los campos que sabes con certeza.",
+      input_schema: {
+        type: "object",
+        properties: { ...PROFILE_FIELDS_COMMON, ...(vacation ? PROFILE_FIELDS_VACATION : PROFILE_FIELDS_SALE) },
+        additionalProperties: false,
+      },
+    },
+  ];
+
+  if (vacation) {
+    tools.push(
+      {
+        name: "get_guest_info",
+        description:
+          "Devuelve la información práctica de un alojamiento para un huésped: llegada, check-in, wifi, parking, normas. Los datos privados (códigos, contraseñas) solo se devuelven si el equipo ha confirmado que este cliente es huésped de ese alojamiento.",
+        input_schema: {
+          type: "object",
+          properties: { property_ref: { type: "string" } },
+          additionalProperties: false,
+        },
+      },
+      {
+        name: "report_incident",
+        description:
+          "Avisa al equipo de un problema durante la estancia (algo no funciona, no puede entrar, ruido, limpieza, fuga, llaves...). Úsala siempre que el huésped tenga un problema que requiera a una persona.",
+        input_schema: {
+          type: "object",
+          properties: {
+            property_ref: { type: "string" },
+            description: { type: "string", description: "Qué pasa, en ESPAÑOL, para el equipo" },
+            urgent: { type: "boolean", description: "true si el huésped no puede entrar, hay agua, gas, electricidad, seguridad o salud" },
+          },
+          required: ["description", "urgent"],
+          additionalProperties: false,
+        },
+      },
+    );
+  } else {
+    tools.push({
+      name: "schedule_visit",
+      description: "Registra una solicitud de visita. El agente la confirmará.",
+      input_schema: {
+        type: "object",
+        properties: { property_ref: { type: "string" }, preferred_time: { type: "string" } },
+        required: ["preferred_time"],
+        additionalProperties: false,
+      },
+    });
+  }
+
+  tools.push({
+    name: "handoff_to_agent",
+    description: vacation
+      ? "Pasa la conversación al equipo. Úsala cuando el cliente quiera reservar o confirmar disponibilidad y precio para unas fechas, pida algo especial (salida tardía, cuna, parking, descuento), pregunte por cancelaciones o pagos concretos, o pida hablar con una persona."
+      : "Pasa el lead a un agente humano: cuando esté listo para comprar, quiera hacer una oferta, pida hablar con una persona o pregunte cuestiones legales/fiscales.",
+    input_schema: {
+      type: "object",
+      properties: {
+        reason: { type: "string" },
+        summary: { type: "string", description: "Resumen en ESPAÑOL para el equipo con todo lo necesario y el próximo paso" },
       },
       required: ["reason", "summary"],
       additionalProperties: false,
     },
-  },
-];
+  });
+  return tools;
+}
 
 const ProfileInput = z.object({
   name: z.string().min(1).optional(),
   email: z.string().min(3).optional(),
   phone: z.string().min(5).optional(),
-  language: z.enum(["es", "en", "sv"]).optional(),
+  language: z.enum(["es", "en", "sv", "de", "fr"]).optional(),
   property_type: z.string().min(1).optional(),
   bedrooms_min: z.number().int().min(0).max(20).optional(),
   budget_max: z.number().int().positive().optional(),
@@ -92,47 +139,79 @@ const ProfileInput = z.object({
   purpose: z.string().optional(),
   wants_visit: z.boolean().optional(),
   notes: z.string().optional(),
+  check_in: z.string().optional(),
+  check_out: z.string().optional(),
+  guests: z.number().int().min(1).max(50).optional(),
+  pets: z.boolean().optional(),
+  budget_night: z.number().int().positive().optional(),
+  property_ref: z.string().optional(),
+  wants_booking: z.boolean().optional(),
 });
 const SearchInput = z.object({
   type: z.string().optional(),
   max_price: z.number().optional(),
   min_bedrooms: z.number().optional(),
+  guests: z.number().optional(),
+  pets: z.boolean().optional(),
   town_or_zone: z.string().optional(),
   ref: z.string().optional(),
+  text: z.string().optional(),
 });
 const VisitInput = z.object({ property_ref: z.string().optional(), preferred_time: z.string().min(1) });
 const HandoffInput = z.object({ reason: z.string().min(1), summary: z.string().min(1) });
+const GuestInfoInput = z.object({ property_ref: z.string().optional() });
+const IncidentInput = z.object({ property_ref: z.string().optional(), description: z.string().min(1), urgent: z.boolean() });
 
 export function describeProperty(p: Property): string {
+  if (p.maxGuests) {
+    const pets = p.petsAllowed === "si" ? "admite mascotas (suplemento)" : p.petsAllowed === "no" ? "no admite mascotas" : "mascotas: consultar";
+    return `${p.ref} | ${p.title} | ${p.type} | hasta ${p.maxGuests} personas, ${p.areaM2} m² | ${p.town}${p.zone ? ` (${p.zone})` : ""} | ${p.features.join(", ")} | ${pets} | reservar: ${p.bookingUrl ?? "consultar con el equipo"}${p.description ? ` | ${p.description}` : ""}`;
+  }
   return `${p.ref} | ${p.title} | ${p.type} | ${formatPrice(p.price)} | ${p.bedrooms} dorm, ${p.bathrooms} baños, ${p.areaM2} m² | ${p.town} (${p.zone}) | ${p.features.join(", ")} | ${p.description}`;
 }
 
+export function findProperty(catalog: Property[], ref?: string): Property | undefined {
+  if (!ref) return undefined;
+  const r = norm(ref);
+  return catalog.find((p) => norm(p.ref) === r) ?? catalog.find((p) => norm(p.title).includes(r) || r.includes(norm(p.title)));
+}
+
 export function searchCatalog(catalog: Property[], f: z.infer<typeof SearchInput>): Property[] {
-  if (f.ref) return catalog.filter((p) => norm(p.ref) === norm(f.ref!));
+  if (f.ref) {
+    const one = findProperty(catalog, f.ref);
+    return one ? [one] : [];
+  }
   return catalog
     .filter((p) => p.status === "disponible")
     .filter((p) => !f.type || sameType(p.type, f.type))
     .filter((p) => !f.max_price || p.price <= f.max_price * 1.05)
     .filter((p) => !f.min_bedrooms || p.bedrooms >= f.min_bedrooms)
+    .filter((p) => !f.guests || !p.maxGuests || p.maxGuests >= f.guests)
+    .filter((p) => !f.pets || p.petsAllowed !== "no")
     .filter((p) => !f.town_or_zone || norm(`${p.town} ${p.zone}`).includes(norm(f.town_or_zone)))
-    .sort((a, b) => b.price - a.price)
+    .filter((p) => !f.text || norm(`${p.title} ${p.features.join(" ")} ${p.description}`).includes(norm(f.text)))
+    .sort((a, b) => (f.guests ? a.maxGuests - b.maxGuests : b.price - a.price))
     .slice(0, 5);
 }
 
+export interface ToolContext {
+  catalog: Property[];
+  lead: Lead;
+  knowledge: string;
+}
+
 /** Ejecuta una herramienta. Devuelve el texto del tool_result y si fue error. */
-export function executeTool(
-  name: string,
-  rawInput: unknown,
-  catalog: Property[],
-  state: TurnState,
-): { content: string; isError: boolean } {
+export function executeTool(name: string, rawInput: unknown, ctx: ToolContext, state: TurnState): { content: string; isError: boolean } {
+  const { catalog } = ctx;
   try {
     switch (name) {
       case "search_properties": {
         const found = searchCatalog(catalog, SearchInput.parse(rawInput));
         found.forEach((p) => state.shownRefs.includes(p.ref) || state.shownRefs.push(p.ref));
         return {
-          content: found.length ? found.map(describeProperty).join("\n") : "Sin resultados con esos filtros. Prueba a ampliar presupuesto o zona, u ofrece avisarle cuando entre algo.",
+          content: found.length
+            ? found.map(describeProperty).join("\n")
+            : "Sin resultados con esos filtros. Prueba a ampliar la búsqueda, u ofrece avisarle cuando haya algo.",
           isError: false,
         };
       }
@@ -148,9 +227,33 @@ export function executeTool(
         state.profilePatch.wants_visit = true;
         return { content: "Solicitud de visita registrada. Un agente la confirmará pronto.", isError: false };
       }
+      case "get_guest_info": {
+        const { property_ref } = GuestInfoInput.parse(rawInput);
+        const confirmed = ctx.lead.guestPropertyId ? catalog.find((p) => p.id === ctx.lead.guestPropertyId) : undefined;
+        const p = findProperty(catalog, property_ref) ?? confirmed;
+        const general = `Información general de la agencia:\n${ctx.knowledge || "(sin información general)"}`;
+        if (!p) return { content: `${general}\n\nNo sé en qué alojamiento está. Pregúntaselo.`, isError: false };
+        if (confirmed && confirmed.id === p.id) {
+          return { content: `${general}\n\nAlojamiento ${p.ref} (${p.title}), huésped CONFIRMADO. Información privada:\n${p.guestInfo || "(no cargada: pásalo al equipo)"}`, isError: false };
+        }
+        return {
+          content: `${general}\n\nAlojamiento ${p.ref} (${p.title}). Este cliente NO está confirmado como huésped: no des códigos, contraseñas ni direcciones exactas. Pídele el nombre de la reserva y avisa al equipo con handoff_to_agent para que lo confirmen.`,
+          isError: false,
+        };
+      }
+      case "report_incident": {
+        const inc = IncidentInput.parse(rawInput);
+        state.incident = { propertyRef: inc.property_ref, description: inc.description, urgent: inc.urgent };
+        return {
+          content: inc.urgent
+            ? "Equipo avisado como URGENTE. Dile al huésped que una persona le contactará en minutos y, si hay peligro, que llame al 112."
+            : "Equipo avisado. Dile al huésped que lo están gestionando y le escribirán pronto.",
+          isError: false,
+        };
+      }
       case "handoff_to_agent": {
         state.handoff = HandoffInput.parse(rawInput);
-        return { content: "Agente humano avisado con el resumen. Dile al comprador que una persona del equipo le contactará muy pronto.", isError: false };
+        return { content: "Equipo avisado con el resumen. Dile al cliente que una persona del equipo le contactará muy pronto.", isError: false };
       }
       default:
         return { content: `Herramienta desconocida: ${name}`, isError: true };

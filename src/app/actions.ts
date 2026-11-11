@@ -5,7 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
-import { agencies, leads, properties, users, visits, STAGES, type Stage } from "@/lib/db/schema";
+import { agencies, leads, properties, users, visits, STAGES, type Stage, type Vertical } from "@/lib/db/schema";
 import { createSession, destroySession, requireUser } from "@/lib/auth";
 import { logEvent, matchNewProperty, sendOutbound } from "@/lib/engine";
 
@@ -39,7 +39,8 @@ export async function signupAction(_: FormState, form: FormData): Promise<FormSt
   let slug = slugify(agencyName);
   if ((await db.select().from(agencies).where(eq(agencies.slug, slug))).length) slug = `${slug}-${Math.random().toString(36).slice(2, 6)}`;
 
-  const [agency] = await db.insert(agencies).values({ name: agencyName, slug, town }).returning();
+  const vertical: Vertical = form.get("vertical") === "vacacional" ? "vacacional" : "venta";
+  const [agency] = await db.insert(agencies).values({ name: agencyName, slug, town, vertical }).returning();
   const [user] = await db.insert(users).values({
     agencyId: agency.id, email, name, role: "owner", passwordHash: await bcrypt.hash(password, 10),
   }).returning();
@@ -58,7 +59,9 @@ export async function createPropertyAction(_: FormState, form: FormData): Promis
   const ref = String(form.get("ref") ?? "").trim().toUpperCase();
   const title = String(form.get("title") ?? "").trim();
   const town = String(form.get("town") ?? "").trim();
-  if (!ref || !title || !town || !num("price")) return { error: "Referencia, título, pueblo y precio son obligatorios" };
+  const vacation = agency.vertical === "vacacional";
+  if (!ref || !title || !town) return { error: "Referencia, título y pueblo son obligatorios" };
+  if (vacation ? !num("maxGuests") : !num("price")) return { error: vacation ? "Indica cuántas personas caben" : "El precio es obligatorio" };
 
   const db = await getDb();
   if ((await db.select().from(properties).where(and(eq(properties.agencyId, agency.id), eq(properties.ref, ref)))).length)
@@ -70,10 +73,14 @@ export async function createPropertyAction(_: FormState, form: FormData): Promis
     price: num("price"), bedrooms: num("bedrooms"), bathrooms: num("bathrooms"), areaM2: num("area"),
     description: String(form.get("description") ?? "").trim(),
     features: String(form.get("features") ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+    maxGuests: num("maxGuests"),
+    petsAllowed: ["si", "no"].includes(String(form.get("pets"))) ? String(form.get("pets")) : "consultar",
+    bookingUrl: String(form.get("bookingUrl") ?? "").trim() || null,
+    guestInfo: String(form.get("guestInfo") ?? "").trim(),
   }).returning();
   const notified = await matchNewProperty(agency, property);
   revalidatePath("/app/properties");
-  return { ok: `Propiedad ${ref} creada. ${notified ? `La IA avisó a ${notified} comprador(es) que encajan.` : "Ningún lead en seguimiento encaja todavía."}` };
+  return { ok: `${ref} creada. ${notified ? `La IA avisó a ${notified} cliente(s) a los que les encaja.` : "Ningún cliente en seguimiento encaja todavía."}` };
 }
 
 export async function setPropertyStatusAction(form: FormData) {
@@ -121,6 +128,24 @@ export async function agentReplyAction(form: FormData) {
   revalidatePath(`/app/leads/${id}`);
 }
 
+export async function markGuestAction(form: FormData) {
+  const { agency } = await requireUser();
+  const id = String(form.get("id"));
+  const propertyId = String(form.get("propertyId") ?? "");
+  const db = await getDb();
+  const lead = (await db.select().from(leads).where(and(eq(leads.id, id), eq(leads.agencyId, agency.id))))[0];
+  if (!lead) return;
+  const prop = propertyId ? (await db.select().from(properties).where(and(eq(properties.id, propertyId), eq(properties.agencyId, agency.id))))[0] : undefined;
+  await db.update(leads).set({
+    guestPropertyId: prop?.id ?? null,
+    stage: prop ? (lead.stage === "incidencia" ? "incidencia" : "huesped") : lead.stage === "huesped" ? "calificando" : lead.stage,
+    nextFollowupAt: prop ? null : lead.nextFollowupAt,
+    updatedAt: new Date(),
+  }).where(eq(leads.id, id));
+  await logEvent(agency.id, id, prop ? "guest_marked" : "stage_changed", prop ? { ref: prop.ref } : { from: lead.stage, to: "calificando" });
+  revalidatePath(`/app/leads/${id}`);
+}
+
 export async function confirmVisitAction(form: FormData) {
   const { agency } = await requireUser();
   const db = await getDb();
@@ -141,6 +166,8 @@ export async function updateSettingsAction(_: FormState, form: FormData): Promis
     agentPhone: String(form.get("agentPhone") ?? "").trim() || null,
     waPhoneNumberId: String(form.get("waId") ?? "").trim() || null,
     handoffThreshold: threshold,
+    vertical: form.get("vertical") === "vacacional" ? "vacacional" : "venta",
+    knowledge: String(form.get("knowledge") ?? "").trim().slice(0, 20000),
   }).where(eq(agencies.id, agency.id));
   revalidatePath("/app", "layout");
   return { ok: "Ajustes guardados" };

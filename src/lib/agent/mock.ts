@@ -7,13 +7,14 @@ import type { Lang, LeadProfile } from "../db/schema";
 import { detectLang } from "../i18n";
 import { formatPrice, norm, scoreLead } from "../scoring";
 import { searchCatalog } from "./tools";
+import { runMockVacationAgent } from "./mock-vacation";
 import { emptyTurnState, type AgentInput, type AgentOutput } from "./types";
 
 type Key =
   | "greet" | "ask_type" | "ask_zone" | "ask_budget" | "ask_timeline" | "ask_financing" | "ask_contact"
   | "matches" | "no_matches" | "visit" | "handoff" | "thanks";
 
-const T: Record<Lang, Record<Key, string>> = {
+const T: Record<"es" | "en" | "sv", Record<Key, string>> = {
   es: {
     greet: "¡Hola! Soy {assistant}, de {agency}. 😊",
     ask_type: "¿Qué tipo de propiedad buscas (apartamento, casa, villa…) y cuántos dormitorios?",
@@ -112,13 +113,14 @@ export function extractProfile(raw: string, towns: string[]): Partial<LeadProfil
 }
 
 export async function runMockAgent(input: AgentInput): Promise<AgentOutput> {
+  if (input.agency.vertical === "vacacional") return runMockVacationAgent(input);
   const { agency, lead, history, catalog } = input;
   const state = emptyTurnState();
   const lastIn = [...history].reverse().find((m) => m.direction === "in");
   const text = lastIn?.body ?? "";
   const lang = lead.inboundCount <= 1 ? detectLang(text, lead.language) : lead.language;
   if (lang !== lead.language) state.contactPatch.language = lang;
-  const t = T[lang];
+  const t = lang === "es" || lang === "sv" ? T[lang] : T.en;
 
   const towns = [...new Set(catalog.flatMap((p) => [p.town, p.zone]).filter(Boolean))];
   const { name, phone, email, ...profilePatch } = extractProfile(text, towns);

@@ -1,8 +1,8 @@
 import bcrypt from "bcryptjs";
-import { sql } from "drizzle-orm";
 import type { DB } from "./db";
 import { agencies, users, properties, leads, messages, events, type LeadProfile, type Stage, type Lang } from "./db/schema";
 import { scoreLead } from "./scoring";
+import { seedVacation, VACATION_SLUG } from "./seed-vacation";
 
 export const DEMO_EMAIL = "demo@arm.local";
 export const DEMO_PASSWORD = "demo1234";
@@ -101,8 +101,13 @@ const DEMO_LEADS: DemoLead[] = [
 ];
 
 export async function seedIfEmpty(db: DB): Promise<void> {
-  const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(agencies);
-  if (count > 0 || process.env.ARM_SKIP_SEED === "1") return;
+  if (process.env.ARM_SKIP_SEED === "1") return;
+  const slugs = new Set((await db.select({ slug: agencies.slug }).from(agencies)).map((a) => a.slug));
+  if (!slugs.has("costa-nerja")) await seedSales(db);
+  if (!slugs.has(VACATION_SLUG)) await seedVacation(db);
+}
+
+async function seedSales(db: DB): Promise<void> {
 
   const [agency] = await db
     .insert(agencies)

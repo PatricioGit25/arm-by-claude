@@ -84,7 +84,7 @@ export function ChatWidget({ slug, agencyName, assistant }: { slug: string; agen
       <div className="flex-1 space-y-2 overflow-y-auto px-3 py-4">
         {msgs.length === 0 && (
           <div className="mx-auto mt-10 max-w-xs rounded-xl bg-[#182229] p-4 text-center text-sm text-mute">
-            👋 ¡Hola! Pregúntanos por cualquier propiedad.<br />Hi! · Hej!
+            👋 ¡Hola! Escríbenos en tu idioma.<br />Hi! · Hej! · Hallo! · Bonjour !
           </div>
         )}
         {msgs.map((m) => (
@@ -99,7 +99,7 @@ export function ChatWidget({ slug, agencyName, assistant }: { slug: string; agen
         <div ref={bottom} />
       </div>
       <form onSubmit={send} className="flex gap-2 bg-[#202c33] p-3">
-        <input value={text} onChange={(e) => setText(e.target.value)} placeholder={HELLO.es} className="flex-1 rounded-full bg-[#2a3942] px-4 py-2 text-[15px] outline-none" />
+        <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Escribe tu mensaje… / Type your message…" className="flex-1 rounded-full bg-[#2a3942] px-4 py-2 text-[15px] outline-none" />
         <button className="flex h-10 w-10 items-center justify-center rounded-full bg-arm font-bold text-ink" aria-label="Enviar">➤</button>
       </form>
     </div>

@@ -99,6 +99,13 @@ CREATE TABLE IF NOT EXISTS visits (
   status text NOT NULL DEFAULT 'pendiente',
   created_at timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE agencies ADD COLUMN IF NOT EXISTS vertical text NOT NULL DEFAULT 'venta';
+ALTER TABLE agencies ADD COLUMN IF NOT EXISTS knowledge text NOT NULL DEFAULT '';
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS max_guests integer NOT NULL DEFAULT 0;
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS pets_allowed text NOT NULL DEFAULT 'consultar';
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS booking_url text;
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS guest_info text NOT NULL DEFAULT '';
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS guest_property_id uuid;
 CREATE TABLE IF NOT EXISTS notifications (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   agency_id uuid NOT NULL,

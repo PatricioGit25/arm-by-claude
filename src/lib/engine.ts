@@ -91,12 +91,17 @@ export async function handleInbound(input: InboundInput): Promise<{ lead: Lead; 
 async function applyTurn(agency: Agency, lead: Lead, out: AgentOutput, catalog: Property[]): Promise<Lead> {
   const db = await getDb();
   const { state } = out;
+  const vacation = agency.vertical === "vacacional";
   const profile: LeadProfile = { ...lead.profile, ...state.profilePatch };
   const contact = { ...state.contactPatch };
   const hasContact = !!(lead.phone || lead.email || contact.phone || contact.email);
-  const { score } = scoreLead(profile, { inboundCount: lead.inboundCount, hasContact });
+  const { score } = scoreLead(profile, { inboundCount: lead.inboundCount, hasContact }, agency.vertical);
+  const who = contact.name ?? lead.name ?? (vacation ? "Cliente" : "Nuevo comprador");
+  const phone = `📞 ${contact.phone ?? lead.phone ?? "sin teléfono"} · ${lead.channel}`;
 
-  let stage = nextStage(lead.stage, score, agency.handoffThreshold);
+  // Un huésped confirmado no vuelve a "consultando" por puntaje.
+  const isGuest = !!lead.guestPropertyId || ["reservado", "huesped", "incidencia"].includes(lead.stage);
+  let stage = isGuest ? lead.stage : nextStage(lead.stage, score, agency.handoffThreshold);
   const patch: Partial<Lead> = {
     profile, score, updatedAt: new Date(),
     ...(contact.name && { name: contact.name }),
@@ -114,22 +119,37 @@ async function applyTurn(agency: Agency, lead: Lead, out: AgentOutput, catalog: 
     stage = "visita";
   }
 
-  const firstHandoff = !lead.handedOffAt && (state.handoff || stage === "listo" || stage === "visita");
-  if (state.handoff || firstHandoff) {
+  if (state.incident) {
+    const prop = catalog.find((p) => p.ref === state.incident!.propertyRef) ?? catalog.find((p) => p.id === lead.guestPropertyId);
+    const where = prop ? prop.title : "alojamiento sin identificar";
+    stage = "incidencia";
+    patch.summary = `Incidencia en ${where}: ${state.incident.description}`;
+    await logEvent(agency.id, lead.id, "incident", { ref: prop?.ref, urgent: state.incident.urgent, description: state.incident.description });
+    await notify(agency, lead, "incident",
+      `${state.incident.urgent ? "🚨 URGENTE" : "⚠️ Incidencia"}: ${where}`,
+      `${who}: ${state.incident.description}\n${phone}`);
+  }
+
+  const autoReady = !lead.handedOffAt && !isGuest && (stage === "listo" || stage === "visita");
+  if (state.handoff || autoReady) {
     const summary = state.handoff?.summary ?? lead.summary ?? `Puntaje ${score}. Perfil: ${JSON.stringify(profile)}`;
-    patch.summary = summary;
-    if (!lead.handedOffAt) {
-      patch.handedOffAt = new Date();
-      if (stage !== "visita") stage = "listo";
-      await logEvent(agency.id, lead.id, "handoff", { reason: state.handoff?.reason, summary, score });
-      const who = contact.name ?? lead.name ?? "Nuevo comprador";
-      const visitTxt = state.visit ? `\n📅 Visita pedida: ${state.visit.preferredTime}${state.visit.propertyRef ? ` (${state.visit.propertyRef})` : ""}` : "";
-      await notify(agency, lead, "handoff", `🔥 Lead listo: ${who} (${score}/100)`, `${summary}${visitTxt}\n📞 ${contact.phone ?? lead.phone ?? "sin teléfono"} · ${lead.channel}`);
+    if (!state.incident) patch.summary = summary;
+    if (!isGuest && stage !== "visita" && (!vacation || profile.wants_booking || profile.check_in || score >= agency.handoffThreshold)) stage = "listo";
+    if (!lead.handedOffAt) patch.handedOffAt = new Date();
+    await logEvent(agency.id, lead.id, "handoff", { reason: state.handoff?.reason, summary, score });
+    const visitTxt = state.visit ? `\n📅 Visita pedida: ${state.visit.preferredTime}${state.visit.propertyRef ? ` (${state.visit.propertyRef})` : ""}` : "";
+    const title = vacation
+      ? stage === "listo" ? `🔥 Quiere reservar: ${who}` : `💬 ${who} necesita al equipo`
+      : `🔥 Lead listo: ${who} (${score}/100)`;
+    // En venta solo se avisa la primera vez; en vacacional, cada vez que la IA lo pide.
+    if (state.handoff || !lead.handedOffAt) {
+      if (vacation || !lead.handedOffAt) await notify(agency, lead, "handoff", title, `${summary}${visitTxt}\n${phone}`);
     }
   }
 
   patch.stage = stage;
   if (AI_STAGES.includes(stage)) patch.nextFollowupAt = new Date(Date.now() + FOLLOWUP_GAPS[0] * DAY);
+  else patch.nextFollowupAt = null;
   if (stage !== lead.stage) await logEvent(agency.id, lead.id, "stage_changed", { from: lead.stage, to: stage });
 
   const [updated] = await db.update(leads).set(patch).where(eq(leads.id, lead.id)).returning();
@@ -187,7 +207,7 @@ export async function runFollowups(now = new Date()): Promise<{ sent: number; lo
     }
     const catalog = await db.select().from(properties).where(and(eq(properties.agencyId, agency.id), eq(properties.status, "disponible")));
     const since = lead.lastOutboundAt ?? lead.createdAt;
-    const fresh = catalog.filter((p) => p.createdAt > since && propertyMatches(p, lead.profile)).map(describeProperty);
+    const fresh = catalog.filter((p) => p.createdAt > since && propertyMatches(p, lead.profile, agency.vertical)).map(describeProperty);
     const body = await followupText(agency, lead, attempt, fresh);
     await sendOutbound(agency, lead, body, "ai");
     await db.update(leads).set({
@@ -209,13 +229,22 @@ async function followupText(agency: Agency, lead: Lead, attempt: number, fresh: 
     }
   }
   const name = lead.name ? ` ${lead.name.split(" ")[0]}` : "";
-  const T = {
+  const SALE: Record<string, string[]> = {
     es: [`¡Hola${name}! ¿Sigues buscando propiedad por la zona? Si quieres te paso las últimas novedades. 😊`, `Hola${name}, han entrado propiedades nuevas que podrían encajarte. ¿Te las envío?`, `Hola${name}, ¿cómo va la búsqueda? Si cambió algo (presupuesto, zona, fechas) dímelo y te ayudo.`, `Hola${name}, te escribo por última vez para no molestar. Si en algún momento vuelves a buscar, aquí estaré. 🏡`],
     en: [`Hi${name}! Are you still looking for a property in the area? Happy to send you the latest listings. 😊`, `Hi${name}, some new properties just came in that could suit you. Shall I send them over?`, `Hi${name}, how's the search going? If anything changed (budget, area, dates) just let me know.`, `Hi${name}, this is my last message so I don't bother you. Whenever you're looking again, I'm here. 🏡`],
     sv: [`Hej${name}! Letar du fortfarande efter en bostad här? Jag skickar gärna de senaste objekten. 😊`, `Hej${name}, det har kommit in nya objekt som kan passa dig. Ska jag skicka dem?`, `Hej${name}, hur går sökandet? Om något har ändrats (budget, område, datum) säg bara till.`, `Hej${name}, det här är mitt sista meddelande så jag inte stör. När du letar igen finns jag här. 🏡`],
-  }[lead.language] ?? [];
+  };
+  const VACATION: Record<string, string[]> = {
+    es: [`¡Hola${name}! ¿Pudiste mirar los alojamientos que te pasé? Si quieres, el equipo te confirma disponibilidad para tus fechas. 😊`, `Hola${name}, ¿sigues buscando alojamiento en ${agency.town || "la zona"}? Las fechas buenas vuelan; dime y lo miramos.`, `Hola${name}, ¿cómo van los planes del viaje? Si cambiaron las fechas o sois más, dímelo y te propongo opciones.`, `Hola${name}, te escribo por última vez para no molestar. Cuando quieras volver a ${agency.town || "la costa"}, aquí estaremos. ☀️`],
+    en: [`Hi${name}! Did you get a chance to look at the places I sent? The team can confirm availability for your dates if you like. 😊`, `Hi${name}, still looking for a place in ${agency.town || "the area"}? Good dates go fast, just let me know.`, `Hi${name}, how are the travel plans going? If dates or numbers changed, tell me and I'll suggest options.`, `Hi${name}, last message so I don't bother you. Whenever you want to come back to ${agency.town || "the coast"}, we're here. ☀️`],
+    sv: [`Hej${name}! Hann du titta på boendena jag skickade? Teamet kan bekräfta tillgänglighet för era datum om du vill. 😊`, `Hej${name}, letar ni fortfarande boende i ${agency.town || "området"}? Bra datum går fort, säg bara till.`, `Hej${name}, hur går reseplanerna? Om datum eller antal har ändrats, säg till så föreslår jag alternativ.`, `Hej${name}, sista meddelandet så jag inte stör. När ni vill komma tillbaka till ${agency.town || "kusten"} finns vi här. ☀️`],
+    de: [`Hallo${name}! Konnten Sie sich die Unterkünfte ansehen? Das Team bestätigt Ihnen gern die Verfügbarkeit für Ihre Daten. 😊`, `Hallo${name}, suchen Sie noch eine Unterkunft in ${agency.town || "der Gegend"}? Gute Termine sind schnell weg.`, `Hallo${name}, wie laufen die Reisepläne? Wenn sich Daten oder Personenzahl geändert haben, sagen Sie es mir.`, `Hallo${name}, meine letzte Nachricht, um nicht zu stören. Wenn Sie wieder nach ${agency.town || "an die Küste"} möchten, sind wir da. ☀️`],
+    fr: [`Bonjour${name} ! Avez-vous pu regarder les logements envoyés ? L'équipe peut vous confirmer la disponibilité pour vos dates. 😊`, `Bonjour${name}, cherchez-vous toujours un logement à ${agency.town || "la côte"} ? Les bonnes dates partent vite.`, `Bonjour${name}, où en sont vos projets de voyage ? Si les dates ont changé, dites-le-moi.`, `Bonjour${name}, dernier message pour ne pas vous déranger. Quand vous voudrez revenir à ${agency.town || "la côte"}, nous serons là. ☀️`],
+  };
+  const table = agency.vertical === "vacacional" ? VACATION : SALE;
+  const T = table[lead.language] ?? table.en;
   const base = T[Math.min(attempt - 1, T.length - 1)];
-  return fresh.length ? `${base}\n${fresh.map((f) => "• " + f.split(" | ").slice(0, 2).join(": ") + " — " + f.split(" | ")[3]).join("\n")}` : base;
+  return fresh.length ? `${base}\n${fresh.map((f) => "• " + f.split(" | ").slice(0, 2).join(": ")).join("\n")}` : base;
 }
 
 /** Cuando entra una propiedad nueva: avisa a los leads que encajan. */
@@ -225,12 +254,19 @@ export async function matchNewProperty(agency: Agency, property: Property): Prom
     eq(leads.agencyId, agency.id), eq(leads.aiPaused, false), inArray(leads.stage, ["calificando", "seguimiento"]),
   ));
   let n = 0;
-  for (const lead of candidates.filter((l) => propertyMatches(property, l.profile))) {
-    const msg = {
-      es: `¡Hola${lead.name ? " " + lead.name.split(" ")[0] : ""}! Acaba de entrar algo que encaja con lo que buscas: ${property.ref}, ${property.title} — ${formatPrice(property.price)}. ¿Quieres más info o verla?`,
-      en: `Hi${lead.name ? " " + lead.name.split(" ")[0] : ""}! Something new just came in that matches what you're after: ${property.ref}, ${property.title} — ${formatPrice(property.price)}. Want more details or a viewing?`,
-      sv: `Hej${lead.name ? " " + lead.name.split(" ")[0] : ""}! Något nytt har precis kommit in som passar det du söker: ${property.ref}, ${property.title} — ${formatPrice(property.price)}. Vill du ha mer info eller boka en visning?`,
-    }[lead.language];
+  for (const lead of candidates.filter((l) => propertyMatches(property, l.profile, agency.vertical))) {
+    const first = lead.name ? " " + lead.name.split(" ")[0] : "";
+    const what = agency.vertical === "vacacional"
+      ? `${property.title} (${property.maxGuests} pers.)${property.bookingUrl ? ` ${property.bookingUrl}` : ""}`
+      : `${property.ref}, ${property.title} — ${formatPrice(property.price)}`;
+    const MSG: Record<string, string> = {
+      es: `¡Hola${first}! Acabamos de sumar algo que encaja con lo que buscas: ${what}. ¿Quieres más info?`,
+      en: `Hi${first}! We've just added something that matches what you're after: ${what}. Want more details?`,
+      sv: `Hej${first}! Vi har precis lagt till något som passar det du söker: ${what}. Vill du ha mer info?`,
+      de: `Hallo${first}! Wir haben gerade etwas Passendes aufgenommen: ${what}. Möchten Sie mehr Infos?`,
+      fr: `Bonjour${first} ! Nous venons d'ajouter quelque chose qui correspond à votre recherche : ${what}. Plus d'infos ?`,
+    };
+    const msg = MSG[lead.language] ?? MSG.en;
     await sendOutbound(agency, lead, msg, "ai");
     await logEvent(agency.id, lead.id, "property_match", { ref: property.ref });
     n++;
@@ -246,26 +282,34 @@ export async function morningSummary(agencyId: string, now = new Date()) {
   const all = await db.select().from(leads).where(eq(leads.agencyId, agencyId));
   const recent = all.filter((l) => l.createdAt >= monthAgo);
 
+  const agency = (await db.select().from(agencies).where(eq(agencies.id, agencyId)))[0];
+  const vacation = agency?.vertical === "vacacional";
+
   const entered24 = all.filter((l) => l.createdAt >= since).length;
-  const ready = all.filter((l) => ["listo", "visita", "oferta"].includes(l.stage)).length;
+  const ready = all.filter((l) => (vacation ? ["listo"] : ["listo", "visita", "oferta"]).includes(l.stage)).length;
   const readyNew = all.filter((l) => l.handedOffAt && l.handedOffAt >= since).length;
   const following = all.filter((l) => l.stage === "seguimiento" || l.stage === "calificando").length;
+  const incidents = all.filter((l) => l.stage === "incidencia").length;
+  const guests = all.filter((l) => l.stage === "huesped" || l.stage === "reservado").length;
 
   const reached = (l: Lead, step: number) => {
     const p = l.profile;
+    const done = vacation ? ["reservado", "huesped"].includes(l.stage) || (l.stage === "incidencia" && !!l.guestPropertyId) : false;
     switch (step) {
       case 0: return true;
-      case 1: return l.inboundCount >= 2 || !!l.handedOffAt;
-      case 2: return (!!p.budget_max && !!p.property_type) || !!l.handedOffAt;
-      case 3: return !!l.handedOffAt || ["listo", "visita", "oferta", "cerrado"].includes(l.stage);
-      case 4: return ["visita", "oferta", "cerrado"].includes(l.stage);
+      case 1: return l.inboundCount >= 2 || !!l.handedOffAt || done;
+      case 2: return (vacation ? !!p.check_in && !!p.guests : !!p.budget_max && !!p.property_type) || !!l.handedOffAt || done;
+      case 3: return vacation ? !!p.wants_booking || l.stage === "listo" || done : !!l.handedOffAt || ["listo", "visita", "oferta", "cerrado"].includes(l.stage);
+      case 4: return vacation ? done : ["visita", "oferta", "cerrado"].includes(l.stage);
       default: return l.stage === "cerrado";
     }
   };
-  const labels = ["Entraron", "Respondieron", "Calificados", "Listos para comprar", "Visita", "Cerrado"];
+  const labels = vacation
+    ? ["Entraron", "Respondieron", "Con fechas y personas", "Quieren reservar", "Reservaron"]
+    : ["Entraron", "Respondieron", "Calificados", "Listos para comprar", "Visita", "Cerrado"];
   const funnel = labels.map((label, i) => ({ label, count: recent.filter((l) => reached(l, i)).length }));
   let worst = { from: "", to: "", lost: 0, pct: 0 };
-  for (let i = 1; i < funnel.length - 1; i++) {
+  for (let i = 1; i < funnel.length - (vacation ? 0 : 1); i++) {
     const lost = funnel[i - 1].count - funnel[i].count;
     const pct = funnel[i - 1].count ? lost / funnel[i - 1].count : 0;
     if (pct > worst.pct) worst = { from: funnel[i - 1].label, to: funnel[i].label, lost, pct };
@@ -275,7 +319,7 @@ export async function morningSummary(agencyId: string, now = new Date()) {
     .where(and(eq(messages.agencyId, agencyId), eq(messages.author, "ai"), sql`${messages.createdAt} >= ${since.toISOString()}`));
   const afterHours = all.filter((l) => l.lastInboundAt && l.lastInboundAt >= since && (l.lastInboundAt.getHours() >= 20 || l.lastInboundAt.getHours() < 9)).length;
 
-  return { entered24, ready, readyNew, following, total: all.length, funnel, worst, aiMessages24: msgs, afterHours };
+  return { vacation, entered24, ready, readyNew, following, incidents, guests, total: all.length, funnel, worst, aiMessages24: msgs, afterHours };
 }
 
 export async function latestNotifications(agencyId: string, limit = 8) {

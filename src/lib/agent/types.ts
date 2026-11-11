@@ -13,6 +13,7 @@ export interface TurnState {
   contactPatch: ContactPatch;
   handoff?: { reason: string; summary: string };
   visit?: { propertyRef?: string; preferredTime: string };
+  incident?: { propertyRef?: string; description: string; urgent: boolean };
   shownRefs: string[];
 }
 

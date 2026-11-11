@@ -18,15 +18,25 @@ export default async function SettingsPage() {
         <h1 className="mb-4 text-lg font-semibold">Inmobiliaria y asistente</h1>
         <ActionForm action={updateSettingsAction} submit="Guardar">
           <div><label className="label">Nombre</label><input name="name" className="input" defaultValue={agency.name} /></div>
+          <div><label className="label">Tipo de negocio</label>
+            <select name="vertical" defaultValue={agency.vertical} className="input">
+              <option value="venta">Inmobiliaria (venta)</option>
+              <option value="vacacional">Alquiler vacacional</option>
+            </select>
+          </div>
           <div><label className="label">Pueblo / zona</label><input name="town" className="input" defaultValue={agency.town} /></div>
           <div><label className="label">Nombre del asistente de IA</label><input name="assistant" className="input" defaultValue={agency.assistantName} /></div>
           <div>
-            <label className="label">Puntaje para pasar al agente ({agency.handoffThreshold})</label>
+            <label className="label">Puntaje para pasar al equipo ({agency.handoffThreshold})</label>
             <input name="threshold" type="number" min={30} max={100} className="input" defaultValue={agency.handoffThreshold} />
             <p className="mt-1 text-xs text-mute">Más bajo = te llegan más leads, pero menos filtrados.</p>
           </div>
           <div><label className="label">WhatsApp del agente (para avisos)</label><input name="agentPhone" className="input" defaultValue={agency.agentPhone ?? ""} placeholder="+34 600 000 000" /></div>
           <div><label className="label">WhatsApp Business · phone_number_id</label><input name="waId" className="input" defaultValue={agency.waPhoneNumberId ?? ""} /></div>
+          <div>
+            <label className="label">Normas y preguntas frecuentes (la IA responde con esto)</label>
+            <textarea name="knowledge" rows={10} className="input" defaultValue={agency.knowledge} placeholder="Horarios de check-in, mascotas, parking, cancelaciones…" />
+          </div>
         </ActionForm>
       </section>
 

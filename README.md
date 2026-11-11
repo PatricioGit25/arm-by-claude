@@ -1,6 +1,6 @@
 # ARM by Claude
 
-**Automated Relationship Manager para inmobiliarias.** Un CRM en el que agentes de IA atienden a cada
+**Automated Relationship Manager para inmobiliarias y alquiler vacacional.** Un CRM en el que agentes de IA atienden a cada
 comprador potencial 24/7 (en español, inglés y sueco), lo califican conversando y pasan al agente
 inmobiliario **solo** a quienes de verdad van a comprar, con todo resumido. Nadie tiene que apuntar nada:
 fichas, historial, etapas, seguimientos y visitas se registran solos.
@@ -22,6 +22,18 @@ fichas, historial, etapas, seguimientos y visitas se registran solos.
 | Resumen de la mañana | Entrados, listos para comprar, en seguimiento y **dónde se están cayendo** (embudo) |
 | Multi-inmobiliaria | Cada inmobiliaria tiene su catálogo, leads, equipo, asistente y umbral de derivación |
 | El humano manda | Botón para tomar la conversación (pausa la IA) y responder desde el panel |
+
+## Modo alquiler vacacional
+
+Cada agencia elige su tipo de negocio en **Ajustes**. En modo *alquiler vacacional* el asistente:
+
+- Pregunta fechas, personas y mascotas, recomienda alojamientos reales y envía su enlace de reserva (p. ej. Lodgify). No inventa disponibilidad ni precios: si quieren reservar, avisa al equipo.
+- Atiende a huéspedes: horarios, normas y preguntas frecuentes (Ajustes → *Normas y preguntas frecuentes*).
+- Solo da datos privados (códigos de acceso, wifi) a huéspedes que el equipo marcó como confirmados en la ficha.
+- Registra incidencias (urgentes o no) y avisa al momento.
+- Atiende en español, inglés, sueco, alemán y francés.
+
+Demo: `/chat/south-costa-demo` y panel con `demo-vacacional@arm.local` / `demo1234` (alojamientos y normas tomados de la web pública de South Costa; los códigos y el wifi son ficticios).
 
 ## Modelos de IA
 

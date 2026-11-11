@@ -12,8 +12,8 @@ function check(name: string, ok: boolean, extra = "") {
   if (!ok) failures++;
 }
 
-async function say(visitor: string, text: string) {
-  const r = await fetch(`${BASE}/api/chat/${SLUG}`, {
+async function say(visitor: string, text: string, slug = SLUG) {
+  const r = await fetch(`${BASE}/api/chat/${slug}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ visitor, text }),
@@ -43,6 +43,25 @@ async function main() {
 
   const hist = await (await fetch(`${BASE}/api/chat/${SLUG}?visitor=${sv}`)).json() as { messages: unknown[] };
   check("historial guardado solo", hist.messages.length >= 6, `${hist.messages.length} mensajes`);
+
+  console.log("\nAlquiler vacacional — familia alemana:");
+  const VS = "south-costa-demo";
+  const de = `smoke-de-${Date.now()}`;
+  r = await say(de, "Hallo, wir suchen vom 10. bis 17. Juli für 4 Personen", VS);
+  check("responde en alemán con alojamientos", /Unterkünfte|Personen|Haustier/i.test(r.reply));
+  r = await say(de, "Wir möchten direkt buchen, keine Haustiere", VS);
+  check("pasa al equipo: quiere reservar", r.stage === "listo", `etapa=${r.stage}`);
+
+  console.log("\nAlquiler vacacional — incidencia:");
+  const inc = `smoke-inc-${Date.now()}`;
+  r = await say(inc, "Hi, I'm at Apartamento Chanquete and the air conditioning is not working", VS);
+  check("crea incidencia", r.stage === "incidencia", `etapa=${r.stage}`);
+
+  console.log("\nAlquiler vacacional — huésped sin confirmar pide el wifi:");
+  const wifi = `smoke-wifi-${Date.now()}`;
+  r = await say(wifi, "Hola! Estamos en Estudio Brisa, ¿cuál es la contraseña del wifi?", VS);
+  check("no revela datos privados", !/4821|Brisa2027/.test(r.reply));
+  check("pide confirmar la reserva", /reserva/i.test(r.reply));
 
   const fu = await fetch(`${BASE}/api/cron/followups`, { headers: { authorization: `Bearer ${process.env.CRON_SECRET ?? ""}` } });
   check("cron de seguimientos", fu.ok, JSON.stringify(await fu.json()));

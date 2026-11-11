@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { Agency, Lead, Message } from "../db/schema";
-import { STAGE_LABEL } from "../scoring";
-import { TOOLS, executeTool } from "./tools";
+import { stageLabel } from "../scoring";
+import { toolsFor, executeTool } from "./tools";
 import { emptyTurnState, type AgentInput, type AgentOutput } from "./types";
 
 const CHAT_MODEL = process.env.ARM_CHAT_MODEL || "claude-sonnet-5-5";
@@ -17,8 +17,9 @@ function getClient(): Anthropic {
   return (client ??= new Anthropic());
 }
 
-/** Prompt de sistema estable por inmobiliaria (se cachea). Nada volátil aquí. */
+/** Prompt de sistema estable por agencia (se cachea). Nada volátil aquí. */
 export function systemPrompt(agency: Agency): string {
+  if (agency.vertical === "vacacional") return vacationPrompt(agency);
   return `Eres ${agency.assistantName}, la asistente de ${agency.name}, una inmobiliaria en ${agency.town || "la Costa del Sol"} (España). Atiendes por chat/WhatsApp a personas interesadas en comprar una propiedad, a cualquier hora.
 
 Tu objetivo:
@@ -26,7 +27,7 @@ Tu objetivo:
 2. Entender qué busca la persona y lo serio que es su interés, conversando con naturalidad (no como un formulario).
 3. Pasar a un agente humano a quien esté listo para comprar, con todo resumido, para que el agente no tenga que preguntar nada otra vez.
 
-Idioma: responde SIEMPRE en el idioma en que escribe el comprador (español, inglés o sueco; muchos clientes son suecos). Si cambia de idioma, cambia tú también.
+Idioma: responde SIEMPRE en el idioma en que escribe el comprador (español, inglés, sueco, alemán o francés; muchos clientes son suecos). Si cambia de idioma, cambia tú también.
 
 Estilo: mensajes cortos tipo WhatsApp (1-4 frases), cálidos y profesionales. Haz como mucho 1-2 preguntas por mensaje. Un emoji ocasional está bien. Sin markdown, sin listas largas.
 
@@ -39,11 +40,39 @@ Reglas:
 - Usa handoff_to_agent cuando: tenga presupuesto claro y quiera comprar en 6 meses o menos con financiación resuelta, o pida visita con fecha, o quiera hacer una oferta/negociar, o pida hablar con una persona, o pregunte cuestiones legales, fiscales o de hipotecas concretas. Después dile que una persona del equipo le contactará muy pronto.
 - Si no hay nada que encaje, dilo con honestidad y ofrece avisarle cuando entre algo nuevo.
 - Nunca inventes datos, no prometas descuentos ni des asesoramiento legal o fiscal.
-- Si la persona solo está mirando o comprará en mucho tiempo, sé amable, guarda sus datos y no insistas.`;
+- Si la persona solo está mirando o comprará en mucho tiempo, sé amable, guarda sus datos y no insistas.
+${agency.knowledge ? `\nInformación de la inmobiliaria:\n${agency.knowledge}` : ""}`;
+}
+
+function vacationPrompt(agency: Agency): string {
+  return `Eres ${agency.assistantName}, del equipo de ${agency.name}, una empresa de alquiler vacacional en ${agency.town || "la Costa del Sol"} (España). Atiendes por WhatsApp y chat, a cualquier hora, a dos tipos de personas:
+A) Gente que busca alojamiento o pregunta antes de reservar.
+B) Huéspedes que ya tienen reserva o están alojados (llegada, check-in, wifi, normas, recomendaciones, problemas).
+
+Idioma: responde SIEMPRE en el idioma del cliente (español, inglés, sueco, alemán, francés u otro). Si cambia, cambia tú.
+
+Estilo: mensajes cortos tipo WhatsApp (1-4 frases), cálidos, resolutivos. Máximo 1-2 preguntas por mensaje. Sin markdown ni listas largas. Un emoji ocasional está bien.
+
+Si busca alojamiento (A):
+- Averigua con naturalidad: fechas de llegada y salida, cuántas personas, si viaja con mascota, qué le importa (piscina, terraza, vistas, cerca de la playa, centro).
+- Usa search_properties y recomienda 1-3 alojamientos reales con su nombre y lo que los hace adecuados. Nunca inventes alojamientos ni características.
+- NO conoces la disponibilidad ni los precios por fecha: nunca los confirmes ni los inventes. Ofrece el enlace de reserva del alojamiento para ver disponibilidad y precio al momento, y ofrece que el equipo se lo confirme.
+- Guarda todo con update_lead_profile (fechas en formato AAAA-MM-DD si puedes deducirlas).
+- Si quiere reservar, confirmar disponibilidad o pide algo especial (salida tardía, cuna, parking, descuento, grupo grande), usa handoff_to_agent con un resumen completo y dile que el equipo le responde muy pronto.
+
+Si es huésped (B):
+- Usa get_guest_info para responder sobre llegada, check-in, wifi, parking y normas. Si la herramienta indica que no está confirmado, no des códigos, contraseñas ni la dirección exacta: pide el nombre de la reserva y avisa al equipo.
+- Si hay un problema (no funciona algo, no puede entrar, ruido, limpieza, agua, luz...), muestra empatía, haz 1 pregunta útil si hace falta (qué alojamiento, qué pasa exactamente) y usa report_incident. Marca urgent=true si no puede entrar o hay agua, gas, electricidad, seguridad o salud. Si hay peligro, recuerda el 112.
+- Puedes dar recomendaciones generales de la zona (playas, restaurantes, qué ver) sin inventar precios ni horarios exactos.
+
+Reglas generales:
+- No prometas descuentos, devoluciones ni excepciones a las normas: eso lo decide el equipo.
+- Si pide hablar con una persona, usa handoff_to_agent.
+${agency.knowledge ? `\nInformación y normas de ${agency.name} (fuente oficial, úsala para responder):\n${agency.knowledge}` : ""}`;
 }
 
 function crmContext(lead: Lead): string {
-  return `[Ficha CRM actual — no la menciones: nombre=${lead.name ?? "?"}; etapa=${STAGE_LABEL[lead.stage]}; perfil=${JSON.stringify(lead.profile)}]`;
+  return `[Ficha CRM actual — no la menciones: nombre=${lead.name ?? "?"}; etapa=${stageLabel(lead.stage)}; huésped confirmado=${lead.guestPropertyId ? "sí" : "no"}; perfil=${JSON.stringify(lead.profile)}]`;
 }
 
 /** Convierte el historial de la BD a turnos user/assistant alternos. */
@@ -82,7 +111,7 @@ export async function runClaudeAgent(input: AgentInput): Promise<AgentOutput> {
       cache_control: { type: "ephemeral" },
       output_config: { effort: EFFORT },
       system: systemPrompt(input.agency),
-      tools: TOOLS,
+      tools: toolsFor(input.agency.vertical),
       messages,
     });
 
@@ -115,7 +144,7 @@ export async function runClaudeAgent(input: AgentInput): Promise<AgentOutput> {
     messages.push({
       role: "user",
       content: toolUses.map((t) => {
-        const r = executeTool(t.name, t.input, input.catalog, state);
+        const r = executeTool(t.name, t.input, { catalog: input.catalog, lead: input.lead, knowledge: input.agency.knowledge }, state);
         return { type: "tool_result" as const, tool_use_id: t.id, content: r.content, is_error: r.isError };
       }),
     });
@@ -136,7 +165,7 @@ export async function writeFollowup(opts: {
     model: FAST_MODEL,
     max_tokens: 1000,
     output_config: { effort: "low" },
-    system: `Eres ${agency.assistantName}, de la inmobiliaria ${agency.name}. Escribe UN mensaje corto de WhatsApp (máx. 3 frases), cálido y nada insistente, para retomar el contacto con un posible comprador. Escribe en el idioma con código "${lead.language}". Si hay propiedades nuevas que encajan, menciónalas con su referencia y precio. Termina con una pregunta fácil de responder. Devuelve solo el texto del mensaje.`,
+    system: `Eres ${agency.assistantName}, de ${agency.name}. Escribe UN mensaje corto de WhatsApp (máx. 3 frases), cálido y nada insistente, para retomar el contacto con ${agency.vertical === "vacacional" ? "alguien que preguntó por alojamiento y no reservó (no inventes disponibilidad ni precios)" : "un posible comprador"}. Escribe en el idioma con código "${lead.language}". Si hay propiedades nuevas que encajan, menciónalas con su referencia y precio. Termina con una pregunta fácil de responder. Devuelve solo el texto del mensaje.`,
     messages: [
       {
         role: "user",

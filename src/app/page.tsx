@@ -32,7 +32,8 @@ export default function Home() {
           van a comprar. Tú no apuntas nada: todo queda registrado solo.
         </p>
         <div className="mt-8 flex flex-wrap justify-center gap-3">
-          <Link href="/chat/costa-nerja" className="btn">Probar el chat como comprador</Link>
+          <Link href="/chat/costa-nerja" className="btn">Probar: inmobiliaria</Link>
+          <Link href="/chat/south-costa-demo" className="btn">Probar: alquiler vacacional</Link>
           <Link href="/login" className="btn-ghost">Ver el panel demo</Link>
         </div>
       </section>
@@ -47,7 +48,7 @@ export default function Home() {
         ))}
       </section>
 
-      <footer className="py-12 text-center text-xs text-mute">ARM by Claude · Multi-inmobiliaria · 🇪🇸 🇬🇧 🇸🇪</footer>
+      <footer className="py-12 text-center text-xs text-mute">ARM by Claude · Inmobiliarias y alquiler vacacional · 🇪🇸 🇬🇧 🇸🇪 🇩🇪 🇫🇷</footer>
     </main>
   );
 }

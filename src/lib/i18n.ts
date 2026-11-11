@@ -1,25 +1,33 @@
 import type { Lang } from "./db/schema";
 
-const SV = /\b(hej|tjena|jag|vi|söker|letar|lägenhet|hus|sovrum|kronor|tack|hur|är|och|med|vill|köpa|visning|månader)\b|[åäö]/i;
-const EN = /\b(hi|hello|hey|i'm|i am|we are|looking|bedroom|bedrooms|house|apartment|flat|buy|budget|thanks|thank you|please|would|could|viewing|months|cash|mortgage)\b/i;
-const ES = /\b(hola|busco|buscamos|quiero|piso|casa|habitaciones|dormitorios|presupuesto|gracias|comprar|meses|hipoteca|contado|visita|el|la|los|para|con)\b|[ñ¿¡]/i;
+const PATTERNS: Record<Lang, RegExp> = {
+  sv: /\b(hej|tjena|jag|vi|söker|letar|lägenhet|hus|sovrum|tack|hur|är|och|med|vill|köpa|hyra|visning|månader|nätter|personer)\b|[åä]/i,
+  en: /\b(hi|hello|hey|i'm|i am|we are|looking|bedroom|bedrooms|house|apartment|flat|buy|budget|thanks|thank you|please|would|could|viewing|months|cash|mortgage|nights|people|available|booking)\b/i,
+  es: /\b(hola|busco|buscamos|quiero|piso|casa|habitaciones|dormitorios|presupuesto|gracias|comprar|meses|hipoteca|contado|visita|noches|personas|disponible|reserva|el|la|los|para|con)\b|[ñ¿¡]/i,
+  de: /\b(hallo|guten|ich|wir|suchen|wohnung|haus|schlafzimmer|danke|bitte|nächte|personen|frei|buchen|und|mit|für|ist|nicht)\b|ß|[äöü]/i,
+  fr: /\b(bonjour|salut|je|nous|cherche|cherchons|appartement|maison|chambres|merci|nuits|personnes|disponible|réserver|avec|pour|est|une|les)\b|[çèêà]/i,
+};
 
-/** Detección simple de idioma (es/en/sv). Claude detecta mejor; esto es para el modo demo. */
+/** Detección simple de idioma. Claude detecta mejor; esto es para el modo demo. */
 export function detectLang(text: string, fallback: Lang = "es"): Lang {
-  const sv = (text.match(new RegExp(SV, "gi")) ?? []).length;
-  const en = (text.match(new RegExp(EN, "gi")) ?? []).length;
-  const es = (text.match(new RegExp(ES, "gi")) ?? []).length;
-  const max = Math.max(sv, en, es);
-  if (max === 0) return fallback;
-  if (sv === max) return "sv";
-  if (es === max) return "es";
-  return "en";
+  let best: Lang = fallback;
+  let max = 0;
+  for (const lang of ["es", "en", "sv", "de", "fr"] as Lang[]) {
+    const n = (text.match(new RegExp(PATTERNS[lang], "gi")) ?? []).length;
+    if (n > max) {
+      max = n;
+      best = lang;
+    }
+  }
+  return best;
 }
 
 export const LANG_LABEL: Record<Lang, string> = {
   es: "Español",
   en: "English",
   sv: "Svenska",
+  de: "Deutsch",
+  fr: "Français",
 };
 
-export const LANG_FLAG: Record<Lang, string> = { es: "🇪🇸", en: "🇬🇧", sv: "🇸🇪" };
+export const LANG_FLAG: Record<Lang, string> = { es: "🇪🇸", en: "🇬🇧", sv: "🇸🇪", de: "🇩🇪", fr: "🇫🇷" };
