@@ -8,6 +8,8 @@ import { getDb } from "@/lib/db";
 import { agencies, leads, properties, users, visits, STAGES, type Stage, type Vertical } from "@/lib/db/schema";
 import { createSession, destroySession, requireUser } from "@/lib/auth";
 import { logEvent, matchNewProperty, sendOutbound } from "@/lib/engine";
+import { ingestNote, ingestPortalEmail } from "@/lib/intake";
+import { LANGS, type Lang } from "@/lib/db/schema";
 
 export type FormState = { error?: string; ok?: string } | undefined;
 
@@ -189,4 +191,39 @@ export async function addAgentUserAction(_: FormState, form: FormData): Promise<
 
 function slugify(s: string) {
   return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 40) || "inmobiliaria";
+}
+
+export async function addNoteAction(_: FormState, form: FormData): Promise<FormState> {
+  const { agency } = await requireUser();
+  const note = String(form.get("note") ?? "").trim();
+  if (note.length < 10) return { error: "Escribe o dicta un poco más: quién es, qué busca y su teléfono." };
+  const source = ["Llamada", "Visita a la oficina", "Otro"].includes(String(form.get("source"))) ? String(form.get("source")) : "Llamada";
+  const lang = String(form.get("language") ?? "");
+  let leadId: string;
+  try {
+    const { lead } = await ingestNote(agency, note, { source, language: LANGS.includes(lang as Lang) ? (lang as Lang) : undefined });
+    leadId = lead.id;
+  } catch (err) {
+    console.error("[ARM] Error creando ficha desde nota:", err);
+    return { error: "No se pudo crear la ficha. Inténtalo de nuevo." };
+  }
+  revalidatePath("/app/leads");
+  redirect(`/app/leads/${leadId}?nuevo=1`);
+}
+
+export async function importEmailAction(_: FormState, form: FormData): Promise<FormState> {
+  const { agency } = await requireUser();
+  const text = String(form.get("email") ?? "").trim();
+  if (text.length < 20) return { error: "Pega el email completo del portal." };
+  let leadId: string;
+  try {
+    const r = await ingestPortalEmail(agency, { text, subject: String(form.get("subject") ?? "") });
+    if (!r.ok) return { error: r.error };
+    leadId = r.lead.id;
+  } catch (err) {
+    console.error("[ARM] Error importando email:", err);
+    return { error: "No se pudo importar el email. Inténtalo de nuevo." };
+  }
+  revalidatePath("/app/leads");
+  redirect(`/app/leads/${leadId}?nuevo=1`);
 }

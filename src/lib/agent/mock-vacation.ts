@@ -152,7 +152,7 @@ export function extractDates(raw: string): { check_in?: string; check_out?: stri
 export function extractGuests(raw: string): number | undefined {
   const t = norm(raw);
   const m = t.match(/(\d{1,2})\s*(personas|persona|people|persons|person|guests|adults|adultos|personer|vuxna|personen|erwachsene|personnes|adultes|pax)\b/)
-    ?? t.match(/\b(?:somos|we are|we're|vi ar|wir sind|nous sommes)\s+(\d{1,2})\b/);
+    ?? t.match(/\b(?:somos|son|seran|we are|we're|vi ar|wir sind|nous sommes|nous serons)\s+(\d{1,2})\b/);
   if (m) return +m[1];
   if (/\b(pareja|couple|par|paar|nous deux|los dos|two of us|vi tva|zu zweit)\b/.test(t)) return 2;
   return undefined;

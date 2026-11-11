@@ -16,10 +16,12 @@ const EVENT_LABEL: Record<string, string> = {
   handoff: "Pasado al agente", visit_requested: "Pidió visita", followup_sent: "Seguimiento automático",
   property_match: "Aviso de propiedad nueva", ai_paused: "IA pausada", ai_resumed: "IA reactivada", send_failed: "Error de envío",
   incident: "Incidencia reportada", guest_marked: "Marcado como huésped",
+  portal_lead: "Contacto desde portal", note_added: "Nota de llamada/visita", channel_linked: "Ahora escribe por otro canal",
 };
 
-export default async function LeadPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function LeadPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ nuevo?: string }> }) {
   const { id } = await params;
+  const { nuevo } = await searchParams;
   const { agency } = await requireUser();
   const db = await getDb();
   const lead = (await db.select().from(leads).where(and(eq(leads.id, id), eq(leads.agencyId, agency.id))))[0];
@@ -38,6 +40,13 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
   const matches = catalog.filter((x) => propertyMatches(x, p, vertical)).slice(0, 4);
   const guestOf = catalog.find((c) => c.id === lead.guestPropertyId);
   const interest = catalog.find((c) => c.ref === p.property_ref);
+  // Clientes que no escriben por un canal automático: el agente envía el mensaje desde su WhatsApp.
+  const manualChannel = lead.channel === "portal" || lead.channel === "manual";
+  const draft = [...msgs].reverse().find((m) => m.author === "ai")?.body;
+  const waDigits = (() => {
+    const d = (lead.phone ?? "").replace(/\D/g, "").replace(/^00/, "");
+    return d.length === 9 && /^[6789]/.test(d) ? `34${d}` : d;
+  })();
 
   return (
     <div className="grid gap-6 lg:grid-cols-5">
@@ -151,10 +160,31 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
         </section>
       </div>
 
-      <section className="card flex h-[80vh] flex-col lg:col-span-3">
+      <div className="space-y-4 lg:col-span-3">
+      {manualChannel && draft && (
+        <section className={`card ${nuevo ? "border-arm" : ""}`}>
+          <p className="text-xs font-semibold uppercase tracking-wide text-arm">{nuevo ? "✓ Ficha creada · " : ""}Mensaje listo para enviar</p>
+          <p className="mt-2 whitespace-pre-line rounded-xl bg-panel2 p-3 text-sm">{draft}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {waDigits ? (
+              <a className="btn" target="_blank" rel="noopener" href={`https://wa.me/${waDigits}?text=${encodeURIComponent(draft)}`}>Enviar por WhatsApp</a>
+            ) : lead.email ? (
+              <a className="btn" href={`mailto:${lead.email}?subject=${encodeURIComponent(agency.name)}&body=${encodeURIComponent(draft)}`}>Enviar por email</a>
+            ) : (
+              <span className="text-sm text-hot">Falta el teléfono o el email del cliente para enviarlo.</span>
+            )}
+          </div>
+          <p className="mt-2 text-xs text-mute">Se abre tu WhatsApp con el mensaje escrito; solo tienes que darle a enviar. Con WhatsApp Business conectado se enviaría solo.</p>
+        </section>
+      )}
+      <section className="card flex h-[80vh] flex-col">
         <h2 className="mb-3 font-semibold">Conversación <span className="text-xs font-normal text-mute">({lead.aiPaused ? "la llevas tú" : "la lleva la IA"})</span></h2>
         <div className="flex-1 space-y-2 overflow-y-auto pr-1">
-          {msgs.map((m) => (
+          {msgs.map((m) => m.author === "system" ? (
+            <div key={m.id} className="mx-auto max-w-[90%] whitespace-pre-line rounded-xl border border-dashed border-line px-3 py-2 text-center text-xs text-mute">
+              {m.body}
+            </div>
+          ) : (
             <div key={m.id} className={`flex ${m.direction === "in" ? "justify-start" : "justify-end"}`}>
               <div className={`max-w-[80%] whitespace-pre-line rounded-2xl px-3 py-2 text-sm ${m.direction === "in" ? "bg-panel2" : m.author === "agent" ? "bg-sky-500/20" : "bg-arm/15"}`}>
                 {m.body}
@@ -169,6 +199,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
           <button className="btn">Enviar</button>
         </form>
       </section>
+      </div>
     </div>
   );
 }

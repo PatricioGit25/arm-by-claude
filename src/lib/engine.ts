@@ -22,7 +22,7 @@ const AI_STAGES: Stage[] = ["nuevo", "calificando", "seguimiento"];
 
 export interface InboundInput {
   agency: Agency;
-  channel: "web" | "whatsapp" | "portal" | "email";
+  channel: "web" | "whatsapp" | "portal" | "email" | "manual";
   externalId: string;
   text: string;
   name?: string;
@@ -36,6 +36,21 @@ export async function getAgencyBySlug(slug: string) {
   return (await db.select().from(agencies).where(eq(agencies.slug, slug)))[0];
 }
 
+export function phoneKey(phone?: string | null): string {
+  const d = (phone ?? "").replace(/\D/g, "");
+  return d.length >= 9 ? d.slice(-9) : "";
+}
+
+/** Busca un cliente existente de la agencia por teléfono o email (para no duplicar). */
+export async function findLeadByContact(agencyId: string, phone?: string | null, email?: string | null): Promise<Lead | undefined> {
+  const pk = phoneKey(phone);
+  const em = email?.trim().toLowerCase();
+  if (!pk && !em) return undefined;
+  const db = await getDb();
+  const all = await db.select().from(leads).where(eq(leads.agencyId, agencyId)).orderBy(desc(leads.updatedAt));
+  return all.find((l) => (pk && phoneKey(l.phone) === pk) || (em && l.email?.toLowerCase() === em));
+}
+
 export async function handleInbound(input: InboundInput): Promise<{ lead: Lead; reply: string | null; engine?: string }> {
   const db = await getDb();
   const { agency } = input;
@@ -46,6 +61,15 @@ export async function handleInbound(input: InboundInput): Promise<{ lead: Lead; 
       eq(leads.agencyId, agency.id), eq(leads.channel, input.channel), eq(leads.externalId, input.externalId),
     ))
   )[0];
+  if (!lead) {
+    const existing = await findLeadByContact(agency.id, input.phone, input.email);
+    if (existing) {
+      // Mismo cliente que ya entró por otro canal (portal, llamada...): ahora escribe por aquí.
+      [lead] = await db.update(leads).set({ channel: input.channel, externalId: input.externalId, name: existing.name ?? input.name })
+        .where(eq(leads.id, existing.id)).returning();
+      await logEvent(agency.id, lead.id, "channel_linked", { channel: input.channel });
+    }
+  }
   if (!lead) {
     [lead] = await db.insert(leads).values({
       agencyId: agency.id, channel: input.channel, externalId: input.externalId,
@@ -70,7 +94,12 @@ export async function handleInbound(input: InboundInput): Promise<{ lead: Lead; 
     await notify(agency, lead, "message", `Nuevo mensaje de ${lead.name ?? "un cliente"}`, input.text);
     return { lead, reply: null };
   }
+  return runAgentTurn(agency, lead);
+}
 
+/** Hace hablar al agente de IA sobre la conversación actual del cliente y aplica lo que decida. */
+export async function runAgentTurn(agency: Agency, lead: Lead): Promise<{ lead: Lead; reply: string | null; engine?: string }> {
+  const db = await getDb();
   const history = await db.select().from(messages).where(eq(messages.leadId, lead.id)).orderBy(asc(messages.createdAt)).limit(60);
   const catalog = await db.select().from(properties).where(eq(properties.agencyId, agency.id));
 

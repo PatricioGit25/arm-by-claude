@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   pgTable,
   uuid,
@@ -68,6 +69,7 @@ export const agencies = pgTable("agencies", {
   assistantName: text("assistant_name").notNull().default("Sofía"),
   vertical: text("vertical").$type<Vertical>().notNull().default("venta"),
   knowledge: text("knowledge").notNull().default(""), // normas y preguntas frecuentes
+  inboundToken: text("inbound_token").notNull().default(sql`md5(random()::text || clock_timestamp()::text)`), // buzón de emails de portales
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

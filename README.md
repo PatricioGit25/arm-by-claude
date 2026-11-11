@@ -35,6 +35,16 @@ Cada agencia elige su tipo de negocio en **Ajustes**. En modo *alquiler vacacion
 
 Demo: `/chat/south-costa-demo` y panel con `demo-vacacional@arm.local` / `demo1234` (alojamientos y normas tomados de la web pública de South Costa; los códigos y el wifi son ficticios).
 
+## Clientes que no escriben por el chat
+
+**+ Nuevo cliente** en el panel:
+
+- **Llamada o visita a la oficina**: el agente dicta (botón 🎤, usa el dictado del navegador) o escribe una nota. La IA crea la ficha (nombre, teléfono, qué busca, idioma), busca propiedades que encajan y redacta el primer WhatsApp, que se envía con un toque desde el WhatsApp del agente.
+- **Email de Idealista u otro portal**: se pega el email de aviso y la IA saca los datos del cliente, crea la ficha y prepara la respuesta.
+- **Buzón automático**: cada agencia tiene una dirección privada `/api/inbound/email/<token>` (en Ajustes) que acepta emails reenviados por servicios de correo entrante (Postmark, CloudMailin, Mailgun, SendGrid, Make, Zapier…) en JSON o formulario.
+
+Si el mismo teléfono o email vuelve a aparecer por otro canal, se une a la ficha existente en vez de duplicarla. Las notas internas nunca se muestran al cliente.
+
 ## Modelos de IA
 
 - **Conversación con compradores:** `claude-sonnet-5-5` (rápido y de buena calidad a un coste razonable), con herramientas

@@ -98,7 +98,7 @@ export function extractProfile(raw: string, towns: string[]): Partial<LeadProfil
   else if (/(hipoteca aprobada|preaprobada|pre-approved|approved mortgage|lanelofte|beviljat)/.test(text)) out.financing = "hipoteca_aprobada";
   else if (/\b(hipoteca|mortgage|bolan|lan)\b/.test(text)) out.financing = "hipoteca_pendiente";
 
-  if (/(visita|visitar|ver el|verlo|verla|viewing|visit|see it|visning|titta pa)/.test(text)) out.wants_visit = true;
+  if (/(visita|visitar|ver el|verlo|verla|ver la casa|ver el piso|viewing|visit|see it|see the|we see|i see|view it|visning|titta pa|besichtig|anschauen|visiter|voir le|voir la)/.test(text)) out.wants_visit = true;
 
   const zones = towns.filter((t) => text.includes(norm(t)));
   if (zones.length) out.zones = zones;
@@ -147,6 +147,10 @@ export async function runMockAgent(input: AgentInput): Promise<AgentOutput> {
           min_bedrooms: profile.bedrooms_min,
           town_or_zone: profile.zones?.[0],
         }).slice(0, 2);
+    if (refMatch && found[0] && !profile.property_type) {
+      state.profilePatch.property_type = found[0].type;
+      profile.property_type = found[0].type;
+    }
     if (found.length) {
       parts.push(t.matches);
       for (const p of found) {
@@ -157,8 +161,9 @@ export async function runMockAgent(input: AgentInput): Promise<AgentOutput> {
   }
 
   if (profilePatch.wants_visit) {
-    state.visit = { propertyRef: refMatch?.[0] ?? lastShownRef(history), preferredTime: text.slice(0, 120) };
-    parts.push(fill(t.visit, agency.assistantName, agency.name).replace("{time}", text.length > 60 ? "…" : text));
+    const when = visitTime(text);
+    state.visit = { propertyRef: refMatch?.[0] ?? lastShownRef(history), preferredTime: when ?? "a convenir" };
+    parts.push(fill(t.visit, agency.assistantName, agency.name).replace(" ({time})", when ? ` (${when})` : ""));
   }
 
   if (score >= agency.handoffThreshold || state.visit) {
@@ -166,7 +171,7 @@ export async function runMockAgent(input: AgentInput): Promise<AgentOutput> {
       reason: state.visit ? "Pidió visita" : `Puntaje ${score} ≥ ${agency.handoffThreshold}`,
       summary: demoSummary(lead.name ?? name, profile),
     };
-    parts.push(t.handoff);
+    if (!state.visit) parts.push(t.handoff);
     if (!hasContact && lead.channel !== "whatsapp") parts.push(t.ask_contact);
   } else {
     const next: Key | undefined = !profile.property_type ? "ask_type"
@@ -180,6 +185,13 @@ export async function runMockAgent(input: AgentInput): Promise<AgentOutput> {
   }
 
   return { reply: parts.join("\n"), state, engine: "demo" };
+}
+
+/** Frase de cuándo quiere visitar: "este sábado", "next Monday morning", "på lördag"... */
+function visitTime(text: string): string | undefined {
+  const days = "lunes|martes|miércoles|miercoles|jueves|viernes|sábado|sabado|domingo|mañana|fin de semana|monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|weekend|måndag|tisdag|onsdag|torsdag|fredag|lördag|söndag|imorgon|helgen";
+  const m = text.match(new RegExp(`((?:este|esta|el|la|el próximo|next|this|on|på|nästa)\\s+)?(${days})(\\s+(?:por la |a la |in the |på )?(?:mañana|tarde|morning|afternoon|förmiddag|eftermiddag))?`, "i"));
+  return m ? m[0].trim() : undefined;
 }
 
 function fill(s: string, assistant: string, agency: string) {

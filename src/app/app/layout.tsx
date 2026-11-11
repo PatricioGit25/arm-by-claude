@@ -7,6 +7,7 @@ import { logoutAction } from "../actions";
 const NAV = [
   { href: "/app", label: "Resumen" },
   { href: "/app/leads", label: "Leads" },
+  { href: "/app/nuevo", label: "+ Nuevo cliente" },
   { href: "/app/properties", label: "Propiedades" },
   { href: "/app/settings", label: "Ajustes" },
 ];

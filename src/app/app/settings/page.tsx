@@ -45,6 +45,8 @@ export default async function SettingsPage() {
           <h2 className="mb-2 font-semibold">Canales</h2>
           <p className="text-sm text-mute">Chat web (pon este enlace en tu web, Instagram o anuncios):</p>
           <code className="mt-1 block break-all rounded-lg bg-panel2 p-2 text-xs text-arm">/chat/{agency.slug}</code>
+          <p className="mt-3 text-sm text-mute">Buzón para emails de portales (Idealista, Fotocasa…), privado:</p>
+          <code className="mt-1 block break-all rounded-lg bg-panel2 p-2 text-xs text-arm">/api/inbound/email/{agency.inboundToken}</code>
           <p className="mt-3 text-sm text-mute">Webhook de WhatsApp (Meta Cloud API):</p>
           <code className="mt-1 block break-all rounded-lg bg-panel2 p-2 text-xs text-arm">/api/whatsapp</code>
         </section>

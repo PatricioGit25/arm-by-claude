@@ -18,7 +18,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
   if (!lead) return NextResponse.json({ messages: [] });
   const msgs = await db.select({ id: messages.id, direction: messages.direction, author: messages.author, body: messages.body, createdAt: messages.createdAt })
     .from(messages).where(eq(messages.leadId, lead.id)).orderBy(asc(messages.createdAt));
-  return NextResponse.json({ messages: msgs });
+  // Las notas internas del equipo nunca se muestran al cliente.
+  return NextResponse.json({ messages: msgs.filter((m) => m.author !== "system") });
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ slug: string }> }) {

@@ -1,5 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
-import type { Agency, Lead, Message } from "../db/schema";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import { z } from "zod";
+import type { Agency, Lead, LeadProfile, Message } from "../db/schema";
 import { stageLabel } from "../scoring";
 import { toolsFor, executeTool } from "./tools";
 import { emptyTurnState, type AgentInput, type AgentOutput } from "./types";
@@ -179,4 +181,74 @@ export async function writeFollowup(opts: {
     .map((b) => b.text)
     .join("\n")
     .trim();
+}
+
+const IntakeSchema = z.object({
+  name: z.string().nullable().describe("Nombre del cliente (no el del portal ni el de la agencia)"),
+  phone: z.string().nullable(),
+  email: z.string().nullable().describe("Email del cliente, nunca el del portal (noreply, notificaciones)"),
+  language: z.enum(["es", "en", "sv", "de", "fr"]).nullable().describe("Idioma en el que conviene escribirle"),
+  property_ref: z.string().nullable().describe("Referencia del catálogo por la que pregunta, si se puede identificar"),
+  client_message: z.string().nullable().describe("Mensaje literal del cliente, si lo hay"),
+  portal: z.string().nullable().describe("Portal de origen: Idealista, Fotocasa, Rightmove, Kyero..."),
+  summary: z.string().describe("Resumen en español, 1-2 frases, para el equipo"),
+  property_type: z.string().nullable(),
+  bedrooms_min: z.number().int().nullable(),
+  budget_max: z.number().int().nullable().describe("Presupuesto de compra en euros"),
+  zones: z.array(z.string()),
+  timeline_months: z.number().int().nullable(),
+  financing: z.enum(["contado", "hipoteca_aprobada", "hipoteca_pendiente", "desconocido"]).nullable(),
+  check_in: z.string().nullable().describe("AAAA-MM-DD"),
+  check_out: z.string().nullable().describe("AAAA-MM-DD"),
+  guests: z.number().int().nullable(),
+  pets: z.boolean().nullable(),
+});
+
+/** Lee un email de aviso de un portal o la nota de un agente y devuelve los datos del cliente. */
+export async function extractIntakeWithClaude(kind: "email" | "note", text: string, agency: Agency, catalog: { ref: string; title: string }[]) {
+  const response = await getClient().messages.parse({
+    model: FAST_MODEL,
+    max_tokens: 2000,
+    output_config: { effort: "low", format: zodOutputFormat(IntakeSchema) },
+    system: `Extraes datos de clientes para el CRM de ${agency.name} (${agency.vertical === "vacacional" ? "alquiler vacacional" : "inmobiliaria de venta"}). Hoy es ${new Date().toISOString().slice(0, 10)}. Usa null cuando un dato no aparezca; no inventes nada. Catálogo (referencia: nombre):\n${catalog.map((p) => `${p.ref}: ${p.title}`).join("\n")}`,
+    messages: [{
+      role: "user",
+      content: kind === "email"
+        ? `Email de aviso de un portal inmobiliario. Extrae los datos del CLIENTE interesado:\n\n${text}`
+        : `Nota del agente tras una llamada o visita a la oficina. Extrae los datos del cliente. El idioma es el del cliente (si la nota dice que es sueco, inglés, etc.), no el de la nota:\n\n${text}`,
+    }],
+  });
+  if (response.stop_reason === "refusal" || !response.parsed_output) throw new Error("Sin datos extraídos");
+  const o = response.parsed_output;
+  const profile: LeadProfile = {};
+  const put = <K extends keyof LeadProfile>(k: K, v: LeadProfile[K] | null | undefined) => {
+    if (v !== null && v !== undefined && !(Array.isArray(v) && v.length === 0)) profile[k] = v;
+  };
+  put("property_type", o.property_type); put("bedrooms_min", o.bedrooms_min); put("budget_max", o.budget_max);
+  put("zones", o.zones); put("timeline_months", o.timeline_months); put("financing", o.financing);
+  put("check_in", o.check_in); put("check_out", o.check_out); put("guests", o.guests); put("pets", o.pets);
+  put("property_ref", o.property_ref);
+  return {
+    name: o.name ?? undefined, phone: o.phone ?? undefined, email: o.email ?? undefined,
+    language: o.language ?? undefined, propertyRef: o.property_ref ?? undefined,
+    clientMessage: o.client_message ?? undefined, portal: o.portal ?? undefined, summary: o.summary,
+    profile,
+  };
+}
+
+/** Primer mensaje de WhatsApp a un cliente que llamó o vino a la oficina. */
+export async function writeOutreach(opts: { agency: Agency; lead: Lead; note: string; source: string; matches: { title: string; ref: string; price: number; maxGuests: number; bookingUrl: string | null }[] }): Promise<string> {
+  const { agency, lead, note, source, matches } = opts;
+  const response = await getClient().messages.create({
+    model: FAST_MODEL,
+    max_tokens: 1000,
+    output_config: { effort: "low" },
+    system: `Eres ${agency.assistantName}, de ${agency.name}. Escribe el PRIMER mensaje de WhatsApp a un cliente que acaba de ${/oficina|visita/i.test(source) ? "pasar por la oficina" : "llamar por teléfono"}. Idioma: código "${lead.language}". Máximo 4 frases, cálido y profesional, sin markdown. Agradece el contacto, demuestra que recuerdas lo que busca, y si hay propiedades que encajan menciónalas (solo esas, sin inventar). Termina con una pregunta fácil. Devuelve solo el texto.`,
+    messages: [{
+      role: "user",
+      content: `Nombre: ${lead.name ?? "(desconocido)"}\nNota del agente: ${note}\nPropiedades que encajan:\n${matches.map((m) => `${m.ref} ${m.title}${m.bookingUrl ? ` ${m.bookingUrl}` : ""}`).join("\n") || "(ninguna)"}`,
+    }],
+  });
+  if (response.stop_reason === "refusal") throw new Error("refusal");
+  return response.content.filter((b): b is Anthropic.TextBlock => b.type === "text").map((b) => b.text).join("\n").trim();
 }

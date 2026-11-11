@@ -101,6 +101,7 @@ CREATE TABLE IF NOT EXISTS visits (
 );
 ALTER TABLE agencies ADD COLUMN IF NOT EXISTS vertical text NOT NULL DEFAULT 'venta';
 ALTER TABLE agencies ADD COLUMN IF NOT EXISTS knowledge text NOT NULL DEFAULT '';
+ALTER TABLE agencies ADD COLUMN IF NOT EXISTS inbound_token text NOT NULL DEFAULT md5(random()::text || clock_timestamp()::text);
 ALTER TABLE properties ADD COLUMN IF NOT EXISTS max_guests integer NOT NULL DEFAULT 0;
 ALTER TABLE properties ADD COLUMN IF NOT EXISTS pets_allowed text NOT NULL DEFAULT 'consultar';
 ALTER TABLE properties ADD COLUMN IF NOT EXISTS booking_url text;
