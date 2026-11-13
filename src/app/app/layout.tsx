@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
+import { AutoRefresh } from "@/components/AutoRefresh";
 import { requireUser } from "@/lib/auth";
 import { hasClaude } from "@/lib/agent/claude";
 import { logoutAction } from "../actions";
@@ -36,6 +37,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
       )}
       <main className="pt-6">{children}</main>
+      <AutoRefresh />
     </div>
   );
 }
