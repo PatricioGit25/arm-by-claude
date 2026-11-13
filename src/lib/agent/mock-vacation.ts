@@ -149,8 +149,14 @@ export function extractDates(raw: string): { check_in?: string; check_out?: stri
   return {};
 }
 
+const NUM: Record<string, number> = { un: 1, una: 1, uno: 1, a: 1, an: 1, one: 1, ett: 1, en: 1, ein: 1, eine: 1, einem: 1, une: 1, dos: 2, two: 2, tva: 2, zwei: 2, deux: 2, tres: 3, three: 3, tre: 3, drei: 3, trois: 3 };
+const KIDS = "(?:ninos?|ninas?|nenes?|bebes?|hij[oa]s?|child|children|kids?|baby|babies|barn|bebis|kind|kinder|baby|enfants?|bebes?)";
+
 export function extractGuests(raw: string): number | undefined {
   const t = norm(raw);
+  // "2 adultos y un niño", "2 adults and 2 kids", "2 vuxna och ett barn"
+  const mix = t.match(new RegExp(`(\\d{1,2}|${Object.keys(NUM).join("|")})\\s*(?:adultos?|adults?|vuxna|erwachsene|adultes?|personas|people)\\s*(?:y|and|och|und|et|\\+|,)\\s*(\\d{1,2}|${Object.keys(NUM).join("|")})\\s*${KIDS}`));
+  if (mix) return (NUM[mix[1]] ?? +mix[1]) + (NUM[mix[2]] ?? +mix[2]);
   const m = t.match(/(\d{1,2})\s*(personas|persona|people|persons|person|guests|adults|adultos|personer|vuxna|personen|erwachsene|personnes|adultes|pax)\b/)
     ?? t.match(/\b(?:somos|son|seran|we are|we're|vi ar|wir sind|nous sommes|nous serons)\s+(\d{1,2})\b/);
   if (m) return +m[1];

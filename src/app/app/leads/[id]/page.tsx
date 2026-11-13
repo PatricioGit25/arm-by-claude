@@ -7,6 +7,7 @@ import { events, leads, messages, properties, visits, type Stage } from "@/lib/d
 import { formatPrice, propertyMatches, scoreLead, stageLabel, stagesFor } from "@/lib/scoring";
 import { LANG_FLAG, LANG_LABEL } from "@/lib/i18n";
 import { ScoreBar, StageBadge } from "@/components/StageBadge";
+import { Linkify } from "@/components/Linkify";
 import { agentReplyAction, confirmVisitAction, markGuestAction, setStageAction, toggleAiAction } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
@@ -186,8 +187,8 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
             </div>
           ) : (
             <div key={m.id} className={`flex ${m.direction === "in" ? "justify-start" : "justify-end"}`}>
-              <div className={`max-w-[80%] whitespace-pre-line rounded-2xl px-3 py-2 text-sm ${m.direction === "in" ? "bg-panel2" : m.author === "agent" ? "bg-sky-500/20" : "bg-arm/15"}`}>
-                {m.body}
+              <div className={`max-w-[80%] whitespace-pre-line break-words rounded-2xl px-3 py-2 text-sm ${m.direction === "in" ? "bg-panel2" : m.author === "agent" ? "bg-sky-500/20" : "bg-arm/15"}`}>
+                <Linkify text={m.body} />
                 <p className="mt-1 text-[10px] text-mute">{m.author === "ai" ? "IA" : m.author === "agent" ? "Agente" : ""} {m.createdAt.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}</p>
               </div>
             </div>
