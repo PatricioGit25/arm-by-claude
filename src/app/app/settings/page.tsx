@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { ActionForm } from "@/components/ActionForm";
-import { addAgentUserAction, updateSettingsAction } from "@/app/actions";
+import { addAgentUserAction, changePasswordAction, updateSettingsAction } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -91,6 +91,14 @@ export default async function SettingsPage() {
             <input name="name" className="input" placeholder="Nombre" />
             <input name="email" type="email" className="input" placeholder="Email" />
             <input name="password" type="password" className="input" placeholder="Contraseña inicial (8+)" />
+          </ActionForm>
+        </section>
+        <section className="card">
+          <h2 className="mb-2 font-semibold">Tu contraseña</h2>
+          <ActionForm action={changePasswordAction} submit="Cambiar contraseña" className="space-y-2">
+            <input name="current" type="password" autoComplete="current-password" className="input" placeholder="Contraseña actual" aria-label="Contraseña actual" />
+            <input name="next" type="password" autoComplete="new-password" className="input" placeholder="Nueva contraseña (8+ caracteres)" aria-label="Nueva contraseña" />
+            <input name="repeat" type="password" autoComplete="new-password" className="input" placeholder="Repite la nueva contraseña" aria-label="Repite la nueva contraseña" />
           </ActionForm>
         </section>
       </div>

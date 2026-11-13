@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { hasClaude } from "@/lib/agent/claude";
+import { adminStatus } from "@/lib/seed-commercial";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,7 @@ export async function GET() {
     const db = await getDb();
     const r = await db.execute(sql`select (select count(*) from agencies)::int as agencies, (select count(*) from leads)::int as leads, (select count(*) from users)::int as users`);
     const row = (Array.isArray(r) ? r[0] : (r as { rows: unknown[] }).rows[0]) as { agencies: number; leads: number; users: number };
-    return NextResponse.json({ ok: true, version, database: "conectada", ...row, env }, { headers: UTF8 });
+    return NextResponse.json({ ok: true, version, database: "conectada", ...row, admin: await adminStatus(db), env }, { headers: UTF8 });
   } catch (err) {
     const message = (err instanceof Error ? err.message : String(err)).replace(/postgres(ql)?:\/\/[^\s]+/gi, "postgresql://***");
     return NextResponse.json({ ok: false, version, database: "ERROR", error: message, env }, { status: 500, headers: UTF8 });

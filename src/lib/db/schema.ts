@@ -97,6 +97,7 @@ export const users = pgTable("users", {
   name: text("name").notNull(),
   passwordHash: text("password_hash").notNull(),
   role: text("role").notNull().default("agent"), // owner | agent
+  envPasswordSha: text("env_password_sha"), // huella de ARM_ADMIN_PASSWORD ya aplicada
   phone: text("phone"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

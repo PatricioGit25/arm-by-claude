@@ -107,6 +107,7 @@ ALTER TABLE properties ADD COLUMN IF NOT EXISTS pets_allowed text NOT NULL DEFAU
 ALTER TABLE properties ADD COLUMN IF NOT EXISTS booking_url text;
 ALTER TABLE properties ADD COLUMN IF NOT EXISTS guest_info text NOT NULL DEFAULT '';
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS guest_property_id uuid;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS env_password_sha text;
 ALTER TABLE agencies ADD COLUMN IF NOT EXISTS feed_url text;
 ALTER TABLE agencies ADD COLUMN IF NOT EXISTS feed_synced_at timestamptz;
 ALTER TABLE agencies ADD COLUMN IF NOT EXISTS feed_status text;

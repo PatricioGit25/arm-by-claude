@@ -4,6 +4,7 @@
  * nunca con una contraseña fija en el código.
  */
 import bcrypt from "bcryptjs";
+import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
 import type { DB } from "./db";
 import { agencies, users } from "./db/schema";
@@ -39,16 +40,40 @@ export async function seedCommercial(db: DB): Promise<void> {
 /** Crea o actualiza el acceso del dueño de VistaAlta a partir de las variables de entorno. */
 export async function ensureAdmin(db: DB): Promise<void> {
   const email = process.env.ARM_ADMIN_EMAIL?.trim().toLowerCase();
-  const password = process.env.ARM_ADMIN_PASSWORD;
-  if (!email || !password || password.length < 8) return;
+  const password = process.env.ARM_ADMIN_PASSWORD?.trim();
+  if (!email || !password) return;
+  if (password.length < 8) {
+    console.error("[ARM] ARM_ADMIN_PASSWORD debe tener al menos 8 caracteres: no se crea el acceso");
+    return;
+  }
   const agency = (await db.select().from(agencies).where(eq(agencies.slug, SALES_SLUG)))[0];
   if (!agency) return;
+  // Solo se aplica cuando la variable cambia: si el dueño cambia la contraseña
+  // desde el panel, no se pisa hasta que cambie ARM_ADMIN_PASSWORD en Vercel.
+  const sha = createHash("sha256").update(password).digest("hex");
   const existing = (await db.select().from(users).where(eq(users.email, email)))[0];
   if (existing) {
-    if (!(await bcrypt.compare(password, existing.passwordHash))) {
-      await db.update(users).set({ passwordHash: await bcrypt.hash(password, 10) }).where(eq(users.id, existing.id));
+    if (existing.envPasswordSha !== sha) {
+      await db.update(users).set({ passwordHash: await bcrypt.hash(password, 10), envPasswordSha: sha }).where(eq(users.id, existing.id));
     }
     return;
   }
-  await db.insert(users).values({ agencyId: agency.id, email, name: "VistaAlta", role: "owner", passwordHash: await bcrypt.hash(password, 10) });
+  await db.insert(users).values({ agencyId: agency.id, email, name: "VistaAlta", role: "owner", passwordHash: await bcrypt.hash(password, 10), envPasswordSha: sha });
+}
+
+/** Estado del acceso del dueño, sin revelar datos (para /api/health). */
+export async function adminStatus(db: DB): Promise<string> {
+  const email = process.env.ARM_ADMIN_EMAIL?.trim().toLowerCase();
+  const password = process.env.ARM_ADMIN_PASSWORD?.trim();
+  if (!email && !password) return "sin configurar (faltan ARM_ADMIN_EMAIL y ARM_ADMIN_PASSWORD)";
+  if (!email) return "falta ARM_ADMIN_EMAIL";
+  if (!password) return "falta ARM_ADMIN_PASSWORD";
+  if (password.length < 8) return "la contraseña tiene menos de 8 caracteres";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "ARM_ADMIN_EMAIL no parece un email válido";
+  const u = (await db.select().from(users).where(eq(users.email, email)))[0];
+  if (!u) return "configurado, pero el usuario aún no existe (vuelve a publicar)";
+  if (await bcrypt.compare(password, u.passwordHash)) return "listo: puedes entrar con ese email y la contraseña de ARM_ADMIN_PASSWORD";
+  return u.envPasswordSha === createHash("sha256").update(password).digest("hex")
+    ? "listo: la contraseña se cambió desde el panel (para restablecerla, cambia ARM_ADMIN_PASSWORD y vuelve a publicar)"
+    : "el usuario existe, pero la contraseña aún no se actualizó (vuelve a publicar)";
 }

@@ -1,7 +1,6 @@
 import Link from "next/link";
-import { ActionForm } from "@/components/ActionForm";
 import { Logo } from "@/components/Logo";
-import { loginAction } from "../actions";
+import { LoginForm } from "@/components/LoginForm";
 import { DEMO_EMAIL, DEMO_PASSWORD } from "@/lib/seed";
 import { VACATION_DEMO_EMAIL } from "@/lib/seed-vacation";
 
@@ -12,16 +11,12 @@ export default function LoginPage() {
       <div className="card !p-6">
         <h1 className="text-xl font-semibold">Bienvenido de nuevo</h1>
         <p className="mb-5 mt-1 text-sm text-mute">Entra al panel de tu agencia.</p>
-        <ActionForm action={loginAction} submit="Entrar" className="space-y-4 [&_button[type=submit]]:w-full">
-          <div><label className="label">Email</label><input name="email" type="email" autoCapitalize="none" autoCorrect="off" autoComplete="username" className="input" defaultValue={DEMO_EMAIL} required /></div>
-          <div><label className="label">Contraseña</label><input name="password" type="password" autoCapitalize="none" autoCorrect="off" autoComplete="current-password" className="input" defaultValue={DEMO_PASSWORD} required /></div>
-        </ActionForm>
-        <div className="mt-4 space-y-1 text-xs text-mute">
-          <p>Demo inmobiliaria: {DEMO_EMAIL} / {DEMO_PASSWORD}</p>
-          <p>Demo alquiler vacacional: {VACATION_DEMO_EMAIL} / {DEMO_PASSWORD}</p>
-        </div>
+        <LoginForm demos={[
+          { label: "Demo inmobiliaria", email: DEMO_EMAIL, password: DEMO_PASSWORD },
+          { label: "Demo alquiler vacacional", email: VACATION_DEMO_EMAIL, password: DEMO_PASSWORD },
+        ]} />
       </div>
-      <p className="mt-4 text-center text-sm text-mute">¿Nueva inmobiliaria? <Link href="/signup" className="text-arm">Crear cuenta</Link></p>
+      <p className="mt-4 text-center text-sm text-mute">¿Nueva agencia? <Link href="/signup" className="text-arm">Crear cuenta</Link></p>
     </main>
   );
 }

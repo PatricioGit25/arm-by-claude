@@ -274,3 +274,16 @@ export async function updatePropertyAction(form: FormData) {
   }).where(and(eq(properties.id, String(form.get("id"))), eq(properties.agencyId, agency.id)));
   revalidatePath("/app/properties");
 }
+
+export async function changePasswordAction(_: FormState, form: FormData): Promise<FormState> {
+  const { user } = await requireUser();
+  const current = String(form.get("current") ?? "").trim();
+  const next = String(form.get("next") ?? "").trim();
+  const repeat = String(form.get("repeat") ?? "").trim();
+  if (!(await bcrypt.compare(current, user.passwordHash))) return { error: "La contraseña actual no es correcta" };
+  if (next.length < 8) return { error: "La nueva contraseña debe tener al menos 8 caracteres" };
+  if (next !== repeat) return { error: "Las dos contraseñas nuevas no coinciden" };
+  const db = await getDb();
+  await db.update(users).set({ passwordHash: await bcrypt.hash(next, 10) }).where(eq(users.id, user.id));
+  return { ok: "Contraseña cambiada. La próxima vez entra con la nueva." };
+}
