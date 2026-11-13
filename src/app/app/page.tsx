@@ -84,8 +84,8 @@ export default async function Dashboard() {
 
 function Stat({ label, value, hot, alert }: { label: string; value: number; hot?: boolean; alert?: boolean }) {
   return (
-    <div className={`rounded-xl p-4 ${alert ? "bg-red-500/15" : "bg-panel2"}`}>
-      <p className={`text-3xl font-black tabular-nums ${alert ? "text-red-300" : hot ? "text-hot" : ""}`}>{value}</p>
+    <div className={`rounded-xl p-4 ${alert ? "bg-bad/10" : "bg-panel2"}`}>
+      <p className={`text-3xl font-black tabular-nums ${alert ? "text-bad" : hot ? "text-hot" : ""}`}>{value}</p>
       <p className="mt-1 text-xs text-mute">{label}</p>
     </div>
   );

@@ -52,7 +52,7 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
   return (
     <div className="grid gap-6 lg:grid-cols-5">
       <div className="space-y-4 lg:col-span-2">
-        <Link href="/app/leads" className="text-sm text-mute hover:text-white">← Pipeline</Link>
+        <Link href="/app/leads" className="text-sm text-mute hover:text-fg">← Pipeline</Link>
         <section className="card">
           <div className="flex items-start justify-between gap-2">
             <div>
@@ -187,7 +187,7 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
             </div>
           ) : (
             <div key={m.id} className={`flex ${m.direction === "in" ? "justify-start" : "justify-end"}`}>
-              <div className={`max-w-[80%] whitespace-pre-line break-words rounded-2xl px-3 py-2 text-sm ${m.direction === "in" ? "bg-panel2" : m.author === "agent" ? "bg-sky-500/20" : "bg-arm/15"}`}>
+              <div className={`max-w-[80%] whitespace-pre-line break-words rounded-2xl px-3 py-2 text-sm ${m.direction === "in" ? "bg-panel2" : m.author === "agent" ? "bg-arm text-white" : "bg-arm/10"}`}>
                 <Linkify text={m.body} />
                 <p className="mt-1 text-[10px] text-mute">{m.author === "ai" ? "IA" : m.author === "agent" ? "Agente" : ""} {m.createdAt.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}</p>
               </div>

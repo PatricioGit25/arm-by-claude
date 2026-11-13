@@ -1,4 +1,4 @@
-# ARM by Claude
+# ARM by VistaAlta
 
 **Automated Relationship Manager para inmobiliarias y alquiler vacacional.** Un CRM en el que agentes de IA atienden a cada
 comprador potencial 24/7 (en español, inglés y sueco), lo califican conversando y pasan al agente

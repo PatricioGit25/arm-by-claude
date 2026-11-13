@@ -18,9 +18,9 @@ export function ActionForm({
   return (
     <form action={formAction} className={className}>
       {children}
-      {state?.error && <p className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-300">{state.error}</p>}
+      {state?.error && <p className="rounded-lg bg-bad/10 px-3 py-2 text-sm text-bad">{state.error}</p>}
       {state?.ok && <p className="rounded-lg bg-arm/10 px-3 py-2 text-sm text-arm">{state.ok}</p>}
-      <button className="btn w-full sm:w-auto" disabled={pending}>{pending ? "…" : submit}</button>
+      <button type="submit" className="btn w-full sm:w-auto" disabled={pending}>{pending ? "…" : submit}</button>
     </form>
   );
 }

@@ -7,11 +7,12 @@ import { VACATION_DEMO_EMAIL } from "@/lib/seed-vacation";
 
 export default function LoginPage() {
   return (
-    <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-4">
-      <Link href="/" className="mb-8 text-center"><Logo className="text-3xl" /></Link>
-      <div className="card">
-        <h1 className="mb-4 text-lg font-semibold">Entrar al panel</h1>
-        <ActionForm action={loginAction} submit="Entrar">
+    <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-4 py-10">
+      <Link href="/" className="mb-10 text-center"><Logo className="text-3xl" /></Link>
+      <div className="card !p-6">
+        <h1 className="text-xl font-semibold">Bienvenido de nuevo</h1>
+        <p className="mb-5 mt-1 text-sm text-mute">Entra al panel de tu agencia.</p>
+        <ActionForm action={loginAction} submit="Entrar" className="space-y-4 [&_button[type=submit]]:w-full">
           <div><label className="label">Email</label><input name="email" type="email" autoCapitalize="none" autoCorrect="off" autoComplete="username" className="input" defaultValue={DEMO_EMAIL} required /></div>
           <div><label className="label">Contraseña</label><input name="password" type="password" autoCapitalize="none" autoCorrect="off" autoComplete="current-password" className="input" defaultValue={DEMO_PASSWORD} required /></div>
         </ActionForm>

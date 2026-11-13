@@ -83,43 +83,66 @@ export function ChatWidget({ slug, agencyName, assistant }: { slug: string; agen
   }
 
   return (
-    <div className="fixed inset-0 flex justify-center bg-[#0b141a]">
-      <div className="flex h-full w-full max-w-md flex-col">
-        <header className="flex shrink-0 items-center gap-3 bg-[#202c33] px-4 py-3" style={{ paddingTop: "max(12px, env(safe-area-inset-top))" }}>
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-arm font-black text-ink">{assistant[0]}</div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate font-semibold">{agencyName}</p>
-            <p className="text-xs text-arm">{typing ? "escribiendo…" : `${assistant} · en línea 24/7`}</p>
+    <div className="fixed inset-0 flex justify-center bg-ink">
+      <div className="flex h-full w-full max-w-lg flex-col sm:my-6 sm:h-[calc(100%-3rem)] sm:overflow-hidden sm:rounded-3xl sm:border sm:border-line sm:shadow-2xl">
+        <header className="flex shrink-0 items-center gap-3 border-b border-line bg-panel/85 px-4 py-3 backdrop-blur-xl" style={{ paddingTop: "max(12px, env(safe-area-inset-top))" }}>
+          <div className="relative">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-arm to-arm2 text-sm font-semibold text-white">{assistant[0]}</div>
+            <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-panel bg-good" aria-hidden />
           </div>
-          <button onClick={reset} className="text-xs text-mute hover:text-white" title="Empezar como otro cliente">Nuevo</button>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[15px] font-semibold leading-tight">{agencyName}</p>
+            <p className="text-xs text-mute">{typing ? "escribiendo…" : `${assistant} · responde al momento`}</p>
+          </div>
+          <button onClick={reset} className="rounded-full px-3 py-1 text-xs text-mute transition hover:bg-panel2 hover:text-fg" title="Empezar como otro cliente">Nuevo</button>
         </header>
-        <div ref={list} className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain px-3 py-4">
+        <div ref={list} className="min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-contain px-3 py-4">
           {msgs.length === 0 && (
-            <div className="mx-auto mt-10 max-w-xs rounded-xl bg-[#182229] p-4 text-center text-sm text-mute">
-              👋 ¡Hola! Escríbenos en tu idioma.<br />Hi! · Hej! · Hallo! · Bonjour !
+            <div className="mx-auto mt-12 max-w-xs text-center">
+              <p className="text-2xl">👋</p>
+              <p className="mt-2 text-[15px] font-medium">¿En qué podemos ayudarte?</p>
+              <p className="mt-1 text-sm text-mute">Escríbenos en tu idioma.<br />Hi! · Hej! · Hallo! · Bonjour !</p>
             </div>
           )}
-          {msgs.map((m) => (
-            <div key={m.id} className={`flex ${m.direction === "in" ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[85%] whitespace-pre-line break-words rounded-xl px-3 py-2 text-[15px] leading-snug ${m.direction === "in" ? "bg-[#005c4b]" : "bg-[#202c33]"}`}>
-                <Linkify text={m.body} className="text-[#53bdeb] underline underline-offset-2 break-all" />
-                <span className="ml-2 align-bottom text-[10px] text-white/50">{new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+          {msgs.map((m) => {
+            const mine = m.direction === "in";
+            return (
+              <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                <div
+                  className={`max-w-[82%] whitespace-pre-line break-words rounded-[20px] px-3.5 py-2 text-[15px] leading-snug ${mine ? "rounded-br-md" : "rounded-bl-md border border-line"}`}
+                  style={{ background: mine ? "var(--bubble-me)" : "var(--bubble-them)", color: mine ? "var(--bubble-me-fg)" : "var(--fg)" }}
+                >
+                  <Linkify text={m.body} className={`underline underline-offset-2 break-all ${mine ? "" : "text-arm"}`} />
+                  <span className={`ml-2 align-bottom text-[10px] ${mine ? "text-white/70" : "text-mute"}`}>{new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                </div>
               </div>
+            );
+          })}
+          {typing && (
+            <div className="flex w-16 items-center justify-center gap-1 rounded-[20px] rounded-bl-md border border-line px-3 py-3" style={{ background: "var(--bubble-them)" }} aria-label="escribiendo">
+              {[0, 1, 2].map((i) => <span key={i} className="h-1.5 w-1.5 animate-bounce rounded-full bg-mute" style={{ animationDelay: `${i * 0.15}s` }} />)}
             </div>
-          ))}
-          {typing && <div className="w-14 rounded-xl bg-[#202c33] px-3 py-2 text-center tracking-widest text-mute">···</div>}
+          )}
         </div>
-        <form onSubmit={send} className="flex shrink-0 gap-2 bg-[#202c33] p-3" style={{ paddingBottom: "max(12px, env(safe-area-inset-bottom))" }}>
+        <form onSubmit={send} className="flex shrink-0 items-center gap-2 border-t border-line bg-panel/85 p-2.5 backdrop-blur-xl" style={{ paddingBottom: "max(10px, env(safe-area-inset-bottom))" }}>
           {/* 16px: con menos, el iPhone hace zoom al tocar el campo */}
           <input
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder="Escribe tu mensaje… / Type your message…"
+            placeholder="Escribe un mensaje…"
             enterKeyHint="send"
-            className="min-w-0 flex-1 rounded-full bg-[#2a3942] px-4 py-2 text-base outline-none"
+            aria-label="Mensaje"
+            className="min-w-0 flex-1 rounded-full border border-line bg-panel2 px-4 py-2.5 text-base text-fg outline-none placeholder:text-mute focus:border-arm"
           />
-          <button className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-arm font-bold text-ink" aria-label="Enviar">➤</button>
+          <button
+            disabled={!text.trim() || typing}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-arm text-white transition hover:bg-arm2 disabled:opacity-40"
+            aria-label="Enviar"
+          >
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden><path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </button>
         </form>
+        <p className="shrink-0 bg-panel/85 pb-1.5 text-center text-[10px] text-mute sm:pb-2">Asistente con IA · ARM by VistaAlta</p>
       </div>
     </div>
   );

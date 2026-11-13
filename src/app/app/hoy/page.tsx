@@ -21,7 +21,7 @@ export default async function TodayPage() {
         </div>
         {items.length === 0 && <div className="card text-sm text-mute">Nada pendiente por ahora. 🎉</div>}
         {items.map((i, n) => (
-          <div key={n} className={`card flex items-start gap-3 !p-4 ${i.kind === "incident" ? "border-red-400/50" : i.kind === "hot" ? "border-hot/40" : ""}`}>
+          <div key={n} className={`card flex items-start gap-3 !p-4 ${i.kind === "incident" ? "border-bad/40" : i.kind === "hot" ? "border-hot/40" : ""}`}>
             <span className="text-xl" aria-hidden>{ICON[i.kind]}</span>
             <div className="min-w-0 flex-1">
               <p className="font-semibold">{i.time && <span className="mr-2 tabular-nums text-arm">{i.time}</span>}{i.title}</p>

@@ -29,12 +29,12 @@ export default async function LeadsPage() {
           return (
             <div key={stage} className="w-64 shrink-0">
               <div className="mb-2 flex items-center justify-between px-1 text-xs font-semibold uppercase tracking-wide text-mute">
-                <span className={stage === "listo" ? "text-hot" : stage === "incidencia" ? "text-red-300" : ""}>{stageLabel(stage, agency.vertical)}</span>
+                <span className={stage === "listo" ? "text-hot" : stage === "incidencia" ? "text-bad" : ""}>{stageLabel(stage, agency.vertical)}</span>
                 <span>{col.length}</span>
               </div>
               <div className="space-y-2">
                 {col.map((l) => (
-                  <Link key={l.id} href={`/app/leads/${l.id}`} className={`block rounded-xl border bg-panel p-3 transition hover:border-arm ${stage === "listo" ? "border-hot/40" : stage === "incidencia" ? "border-red-400/50" : "border-line"}`}>
+                  <Link key={l.id} href={`/app/leads/${l.id}`} className={`block rounded-xl border bg-panel p-3 transition hover:border-arm ${stage === "listo" ? "border-hot/40" : stage === "incidencia" ? "border-bad/40" : "border-line"}`}>
                     <div className="flex items-center justify-between gap-2">
                       <p className="truncate text-sm font-semibold">{LANG_FLAG[l.language]} {l.name ?? "Sin nombre"}</p>
                       <ScoreBar score={l.score} threshold={agency.handoffThreshold} />

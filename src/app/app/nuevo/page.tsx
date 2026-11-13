@@ -62,7 +62,7 @@ export default async function NewLeadPage() {
           <textarea name="email" rows={9} className="input" placeholder="Pega aquí el email completo del portal…" required />
         </ActionForm>
         <div className="mt-5 rounded-xl bg-panel2 p-3 text-xs text-mute">
-          <p className="font-semibold text-white">¿Quieres que entren solos, sin pegar nada?</p>
+          <p className="font-semibold text-fg">¿Quieres que entren solos, sin pegar nada?</p>
           <p className="mt-1">Conecta tu correo una sola vez y cada aviso de Idealista llegará al ARM en 1 minuto.</p>
           <a className="mt-2 inline-block text-arm underline" href="/app/conectar">Conectar Idealista →</a>
         </div>

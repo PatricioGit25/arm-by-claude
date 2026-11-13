@@ -88,7 +88,7 @@ export default async function ConnectPage() {
         </ol>
 
         <div className="rounded-xl bg-panel2 p-3 text-xs text-mute">
-          <p className="font-semibold text-white">¿No usáis Gmail?</p>
+          <p className="font-semibold text-fg">¿No usáis Gmail?</p>
           <p className="mt-1">Con Outlook u otro correo: crea una regla que reenvíe los emails de Idealista a una cuenta de Gmail y sigue estos pasos en esa cuenta. También sirve cualquier servicio de correo entrante que envíe los emails a esta dirección:</p>
           <code className="mt-2 block break-all rounded-lg bg-ink p-2 text-arm">{url}</code>
           <p className="mt-2">Esta dirección es privada: quien la tenga puede crear contactos en tu cuenta.</p>
