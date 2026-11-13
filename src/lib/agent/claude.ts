@@ -24,6 +24,8 @@ export function systemPrompt(agency: Agency): string {
   if (agency.vertical === "vacacional") return vacationPrompt(agency);
   return `Eres ${agency.assistantName}, la asistente de ${agency.name}, una inmobiliaria en ${agency.town || "la Costa del Sol"} (España). Atiendes por chat/WhatsApp a personas interesadas en comprar una propiedad, a cualquier hora.
 
+Hoy es ${new Date().toLocaleDateString("es-ES", { timeZone: agency.timezone, weekday: "long", year: "numeric", month: "long", day: "numeric" })}.
+
 Tu objetivo:
 1. Responder rápido y con amabilidad las dudas sobre las propiedades.
 2. Entender qué busca la persona y lo serio que es su interés, conversando con naturalidad (no como un formulario).
@@ -38,7 +40,7 @@ Qué averiguar poco a poco (lo que falte, en este orden aproximado): qué tipo d
 Reglas:
 - Usa search_properties antes de mencionar cualquier propiedad. Solo habla de propiedades que devuelva la herramienta. Cita su referencia (p. ej. NJ-101) y su precio.
 - Llama a update_lead_profile en cuanto el comprador dé cualquier dato nuevo.
-- Si quiere visitar, pregunta cuándo puede y usa schedule_visit.
+- Si quiere visitar: usa get_available_slots, propón 2-3 huecos reales (día y hora en su idioma) y, cuando elija uno, usa schedule_visit con ese slot_start. Si no quiere fijar hora, schedule_visit solo con preferred_time.
 - Usa handoff_to_agent cuando: tenga presupuesto claro y quiera comprar en 6 meses o menos con financiación resuelta, o pida visita con fecha, o quiera hacer una oferta/negociar, o pida hablar con una persona, o pregunte cuestiones legales, fiscales o de hipotecas concretas. Después dile que una persona del equipo le contactará muy pronto.
 - Si no hay nada que encaje, dilo con honestidad y ofrece avisarle cuando entre algo nuevo.
 - Nunca inventes datos, no prometas descuentos ni des asesoramiento legal o fiscal.
@@ -145,10 +147,10 @@ export async function runClaudeAgent(input: AgentInput): Promise<AgentOutput> {
     messages.push({ role: "assistant", content: response.content });
     messages.push({
       role: "user",
-      content: toolUses.map((t) => {
-        const r = executeTool(t.name, t.input, { catalog: input.catalog, lead: input.lead, knowledge: input.agency.knowledge }, state);
+      content: await Promise.all(toolUses.map(async (t) => {
+        const r = await executeTool(t.name, t.input, { agency: input.agency, catalog: input.catalog, lead: input.lead, knowledge: input.agency.knowledge }, state);
         return { type: "tool_result" as const, tool_use_id: t.id, content: r.content, is_error: r.isError };
-      }),
+      })),
     });
   }
 
@@ -251,4 +253,39 @@ export async function writeOutreach(opts: { agency: Agency; lead: Lead; note: st
   });
   if (response.stop_reason === "refusal") throw new Error("refusal");
   return response.content.filter((b): b is Anthropic.TextBlock => b.type === "text").map((b) => b.text).join("\n").trim();
+}
+
+const PropertySchema = z.object({
+  title: z.string().describe("Título comercial corto en español"),
+  type: z.enum(["apartamento", "atico", "estudio", "casa", "villa", "terreno", "comercial"]),
+  price: z.number().int().describe("Precio en euros; 0 si no se dice"),
+  bedrooms: z.number().int(),
+  bathrooms: z.number().int(),
+  area_m2: z.number().int(),
+  max_guests: z.number().int().describe("Solo alquiler vacacional: personas; 0 si no aplica"),
+  town: z.string(),
+  zone: z.string().describe("Zona o urbanización; vacío si no se dice"),
+  features: z.array(z.string()).describe("Características clave en español, cortas"),
+  owner_contact: z.string().nullable().describe("Nombre y teléfono del propietario si se mencionan"),
+  description_es: z.string(),
+  description_en: z.string(),
+  description_sv: z.string(),
+});
+
+/** Ficha de propiedad a partir de lo que el agente dictó, con descripción en 3 idiomas. */
+export async function extractPropertyWithClaude(agency: Agency, note: string) {
+  const response = await getClient().messages.parse({
+    model: FAST_MODEL,
+    max_tokens: 3000,
+    output_config: { effort: "low", format: zodOutputFormat(PropertySchema) },
+    system: `Creas fichas de inmuebles para ${agency.name} (${agency.town || "Costa del Sol"}, ${agency.vertical === "vacacional" ? "alquiler vacacional" : "venta"}). A partir de la nota dictada por el agente, rellena los datos (0 o vacío si no se dicen, nunca inventes) y escribe una descripción comercial breve (3-4 frases) en español, inglés y sueco basada SOLO en lo que dice la nota.`,
+    messages: [{ role: "user", content: note }],
+  });
+  if (response.stop_reason === "refusal" || !response.parsed_output) throw new Error("Sin datos");
+  const o = response.parsed_output;
+  return {
+    title: o.title, type: o.type, price: o.price, bedrooms: o.bedrooms, bathrooms: o.bathrooms, areaM2: o.area_m2,
+    town: o.town, zone: o.zone, features: o.features, ownerContact: o.owner_contact ?? undefined, maxGuests: o.max_guests,
+    description: `${o.description_es}\n\n🇬🇧 ${o.description_en}\n\n🇸🇪 ${o.description_sv}`,
+  };
 }

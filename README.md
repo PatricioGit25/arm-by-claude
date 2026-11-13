@@ -46,6 +46,13 @@ Demo: `/chat/south-costa-demo` y panel con `demo-vacacional@arm.local` / `demo12
 
 Si el mismo teléfono o email vuelve a aparecer por otro canal, se une a la ficha existente en vez de duplicarla. Las notas internas nunca se muestran al cliente.
 
+## Agenda, CRM y "Tu día"
+
+- **Calendario sin OAuth**: en Ajustes, horario de visitas, duración y la *dirección secreta iCal* del calendario del agente (Google, iCloud, Outlook) para saber cuándo está ocupado. La IA propone huecos libres reales y agenda la visita; el ARM publica `/api/calendar/<token>.ics` para suscribirse desde Google Calendar o el iPhone.
+- **Conexión con el CRM**: feed XML (formato Kyero v3, el que exportan Inmovilla, Witei, Mobilia, etc., o genérico). Se sincroniza al guardarlo, con un botón y cada día por cron; las que desaparecen del feed quedan como retiradas.
+- **Alta de propiedades por voz**: el agente dicta lo que vio; se crea la ficha (con descripción en es/en/sv si hay IA) y se avisa a los clientes que encajan.
+- **Tu día**: lista priorizada (incidencias, visitas de hoy, clientes listos para llamar, visitas por confirmar, WhatsApps por enviar, propiedades que encajan, clientes a retomar, fichas por completar) y resumen hablado con ElevenLabs. Con WhatsApp Business conectado, el cron diario se lo envía en audio al agente.
+
 ## Modelos de IA
 
 - **Conversación con compradores:** `claude-sonnet-5-5` (rápido y de buena calidad a un coste razonable), con herramientas

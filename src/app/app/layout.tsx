@@ -5,6 +5,7 @@ import { hasClaude } from "@/lib/agent/claude";
 import { logoutAction } from "../actions";
 
 const NAV = [
+  { href: "/app/hoy", label: "Tu día" },
   { href: "/app", label: "Resumen" },
   { href: "/app/leads", label: "Leads" },
   { href: "/app/nuevo", label: "+ Nuevo cliente" },

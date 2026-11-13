@@ -56,3 +56,20 @@ export function parseWhatsAppWebhook(payload: unknown): {
   }
   return out;
 }
+
+/** Envía un audio (MP3) por WhatsApp: primero se sube a Meta y luego se manda. */
+export async function sendWhatsAppAudio(phoneNumberId: string, to: string, mp3: ArrayBuffer): Promise<void> {
+  const form = new FormData();
+  form.append("messaging_product", "whatsapp");
+  form.append("type", "audio/mpeg");
+  form.append("file", new Blob([mp3], { type: "audio/mpeg" }), "resumen.mp3");
+  const up = await fetch(`${GRAPH}/${phoneNumberId}/media`, { method: "POST", headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` }, body: form });
+  if (!up.ok) throw new Error(`WhatsApp media ${up.status}: ${await up.text()}`);
+  const { id } = (await up.json()) as { id: string };
+  const res = await fetch(`${GRAPH}/${phoneNumberId}/messages`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ messaging_product: "whatsapp", to: to.replace(/[^\d]/g, ""), type: "audio", audio: { id } }),
+  });
+  if (!res.ok) throw new Error(`WhatsApp ${res.status}: ${await res.text()}`);
+}

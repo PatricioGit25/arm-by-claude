@@ -8,11 +8,12 @@ import { detectLang } from "../i18n";
 import { formatPrice, norm, scoreLead } from "../scoring";
 import { searchCatalog } from "./tools";
 import { runMockVacationAgent } from "./mock-vacation";
+import { availableSlots, formatSlot } from "../calendar";
 import { emptyTurnState, type AgentInput, type AgentOutput } from "./types";
 
 type Key =
   | "greet" | "ask_type" | "ask_zone" | "ask_budget" | "ask_timeline" | "ask_financing" | "ask_contact"
-  | "matches" | "no_matches" | "visit" | "handoff" | "thanks";
+  | "matches" | "no_matches" | "visit" | "handoff" | "thanks" | "slots_intro" | "slots_pick" | "booked";
 
 const T: Record<"es" | "en" | "sv", Record<Key, string>> = {
   es: {
@@ -28,6 +29,9 @@ const T: Record<"es" | "en" | "sv", Record<Key, string>> = {
     visit: "¡Perfecto! Apunto la visita ({time}) y un compañero te la confirma enseguida.",
     handoff: "Genial, con esto ya tengo todo. Le paso tu ficha a un agente del equipo y te contacta muy pronto. 🏡",
     thanks: "¡Gracias! Si necesitas algo más, aquí estoy.",
+    slots_intro: "¡Genial! Estos huecos están libres para la visita:",
+    slots_pick: "¿Cuál te viene mejor? Responde con el número.",
+    booked: "¡Hecho! Visita agendada para el {time}. Te escribiremos para recordártela. 🏡",
   },
   en: {
     greet: "Hi! I'm {assistant} from {agency}. 😊",
@@ -42,6 +46,9 @@ const T: Record<"es" | "en" | "sv", Record<Key, string>> = {
     visit: "Perfect! I've noted the viewing ({time}) and a colleague will confirm it shortly.",
     handoff: "Great, I have everything I need. I'm passing your details to one of our agents, who'll contact you very soon. 🏡",
     thanks: "Thank you! I'm here if you need anything else.",
+    slots_intro: "Great! These times are free for a viewing:",
+    slots_pick: "Which one suits you best? Just reply with the number.",
+    booked: "Done! Your viewing is booked for {time}. We'll send you a reminder. 🏡",
   },
   sv: {
     greet: "Hej! Jag heter {assistant} och jobbar på {agency}. 😊",
@@ -56,6 +63,9 @@ const T: Record<"es" | "en" | "sv", Record<Key, string>> = {
     visit: "Perfekt! Jag har noterat visningen ({time}) och en kollega bekräftar den snart.",
     handoff: "Toppen, nu har jag allt jag behöver. Jag skickar dina uppgifter till en av våra mäklare som kontaktar dig mycket snart. 🏡",
     thanks: "Tack! Hör av dig om du behöver något mer.",
+    slots_intro: "Toppen! De här tiderna är lediga för en visning:",
+    slots_pick: "Vilken passar bäst? Svara med numret.",
+    booked: "Klart! Visningen är bokad till {time}. Vi skickar en påminnelse. 🏡",
   },
 };
 
@@ -160,9 +170,26 @@ export async function runMockAgent(input: AgentInput): Promise<AgentOutput> {
     } else if (profile.budget_max && profile.property_type) parts.push(t.no_matches);
   }
 
-  if (profilePatch.wants_visit) {
+  const offered = lead.profile.offered_slots ?? [];
+  const pick = offered.length ? pickSlot(text, offered, agency.timezone) : undefined;
+  if (pick) {
+    const label = formatSlot(new Date(pick), agency.timezone, lang);
+    state.visit = { propertyRef: lead.profile.property_ref ?? refMatch?.[0] ?? lastShownRef(history), preferredTime: label, startsAt: pick };
+    state.profilePatch.offered_slots = [];
+    state.profilePatch.wants_visit = true;
+    parts.push(t.booked.replace("{time}", label));
+  } else if (profilePatch.wants_visit) {
     const when = visitTime(text);
-    state.visit = { propertyRef: refMatch?.[0] ?? lastShownRef(history), preferredTime: when ?? "a convenir" };
+    const partOfDay = /tarde|afternoon|eftermiddag|nachmittag|apr[eè]s-midi/i.test(text) ? "afternoon" : /por la mañana|morning|förmiddag|vormittag|matin/i.test(text) ? "morning" : undefined;
+    const slots = await availableSlots(agency, { max: 3, partOfDay }).catch(() => []);
+    const ref = refMatch?.[0] ?? lastShownRef(history);
+    if (slots.length) {
+      state.profilePatch.offered_slots = slots.map((s) => s.start.toISOString());
+      if (ref) state.profilePatch.property_ref = ref;
+      parts.push(t.slots_intro, ...slots.map((s, i) => `${i + 1}. ${formatSlot(s.start, agency.timezone, lang)}`), t.slots_pick);
+      return { reply: parts.join("\n"), state, engine: "demo" };
+    }
+    state.visit = { propertyRef: ref, preferredTime: when ?? "a convenir" };
     parts.push(fill(t.visit, agency.assistantName, agency.name).replace(" ({time})", when ? ` (${when})` : ""));
   }
 
@@ -185,6 +212,23 @@ export async function runMockAgent(input: AgentInput): Promise<AgentOutput> {
   }
 
   return { reply: parts.join("\n"), state, engine: "demo" };
+}
+
+/** ¿Eligió uno de los huecos ofrecidos? ("2", "el segundo", "the first", "lördag"...) */
+function pickSlot(text: string, offered: string[], tz: string): string | undefined {
+  const t = norm(text);
+  const ord: [RegExp, number][] = [
+    [/^\s*(?:el |la |opcion |option |nummer |nr\.? |numero )?1\b|\b(primer[oa]?|first|forsta|erste[nr]?|premier|premiere)\b/, 0],
+    [/^\s*(?:el |la |opcion |option |nummer |nr\.? |numero )?2\b|\b(segund[oa]|second|andra|zweite[nr]?|deuxieme)\b/, 1],
+    [/^\s*(?:el |la |opcion |option |nummer |nr\.? |numero )?3\b|\b(tercer[oa]?|third|tredje|dritte[nr]?|troisieme)\b/, 2],
+  ];
+  for (const [re, i] of ord) if (re.test(t) && offered[i]) return offered[i];
+  for (const iso of offered) {
+    const day = norm(new Intl.DateTimeFormat("es-ES", { timeZone: tz, weekday: "long" }).format(new Date(iso)));
+    const dayEn = new Intl.DateTimeFormat("en-GB", { timeZone: tz, weekday: "long" }).format(new Date(iso)).toLowerCase();
+    const daySv = norm(new Intl.DateTimeFormat("sv-SE", { timeZone: tz, weekday: "long" }).format(new Date(iso)));
+    if ([day, dayEn, daySv].some((d) => t.includes(d))) return iso;
+  }
 }
 
 /** Frase de cuándo quiere visitar: "este sábado", "next Monday morning", "på lördag"... */

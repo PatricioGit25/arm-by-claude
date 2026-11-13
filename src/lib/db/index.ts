@@ -107,6 +107,21 @@ ALTER TABLE properties ADD COLUMN IF NOT EXISTS pets_allowed text NOT NULL DEFAU
 ALTER TABLE properties ADD COLUMN IF NOT EXISTS booking_url text;
 ALTER TABLE properties ADD COLUMN IF NOT EXISTS guest_info text NOT NULL DEFAULT '';
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS guest_property_id uuid;
+ALTER TABLE agencies ADD COLUMN IF NOT EXISTS feed_url text;
+ALTER TABLE agencies ADD COLUMN IF NOT EXISTS feed_synced_at timestamptz;
+ALTER TABLE agencies ADD COLUMN IF NOT EXISTS feed_status text;
+ALTER TABLE agencies ADD COLUMN IF NOT EXISTS calendar_ics_url text;
+ALTER TABLE agencies ADD COLUMN IF NOT EXISTS calendar_token text NOT NULL DEFAULT md5(random()::text || clock_timestamp()::text || 'cal');
+ALTER TABLE agencies ADD COLUMN IF NOT EXISTS work_days text NOT NULL DEFAULT '1,2,3,4,5,6';
+ALTER TABLE agencies ADD COLUMN IF NOT EXISTS work_hours text NOT NULL DEFAULT '10:00-14:00,16:30-19:30';
+ALTER TABLE agencies ADD COLUMN IF NOT EXISTS visit_minutes integer NOT NULL DEFAULT 45;
+ALTER TABLE agencies ADD COLUMN IF NOT EXISTS timezone text NOT NULL DEFAULT 'Europe/Madrid';
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS external_id text;
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS owner_contact text;
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS image_url text;
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS origin text NOT NULL DEFAULT 'manual';
+ALTER TABLE visits ADD COLUMN IF NOT EXISTS scheduled_at timestamptz;
+ALTER TABLE visits ADD COLUMN IF NOT EXISTS ends_at timestamptz;
 CREATE TABLE IF NOT EXISTS notifications (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   agency_id uuid NOT NULL,

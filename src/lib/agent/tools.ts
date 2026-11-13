@@ -1,6 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
-import type { Lead, Property, Vertical } from "../db/schema";
+import type { Agency, Lead, Property, Vertical } from "../db/schema";
+import { availableSlots, formatSlot, isFree } from "../calendar";
 import { formatPrice, norm, sameType } from "../scoring";
 import type { TurnState } from "./types";
 
@@ -95,16 +96,33 @@ export function toolsFor(vertical: Vertical): Anthropic.Tool[] {
       },
     );
   } else {
-    tools.push({
-      name: "schedule_visit",
-      description: "Registra una solicitud de visita. El agente la confirmará.",
-      input_schema: {
-        type: "object",
-        properties: { property_ref: { type: "string" }, preferred_time: { type: "string" } },
-        required: ["preferred_time"],
-        additionalProperties: false,
+    tools.push(
+      {
+        name: "get_available_slots",
+        description: "Devuelve huecos libres REALES en la agenda del agente para hacer una visita. Úsala antes de proponer día y hora; nunca inventes horarios.",
+        input_schema: {
+          type: "object",
+          properties: {
+            from_date: { type: "string", description: "AAAA-MM-DD desde el que buscar (por defecto, hoy)" },
+            part_of_day: { type: "string", enum: ["morning", "afternoon"], description: "Si el cliente prefiere mañana o tarde" },
+          },
+          additionalProperties: false,
+        },
       },
-    });
+      {
+        name: "schedule_visit",
+        description: "Agenda la visita en el calendario del agente. Pasa slot_start EXACTAMENTE como lo devolvió get_available_slots para el hueco que eligió el cliente. Si el cliente no quiere fijar hora todavía, pasa solo preferred_time y el agente le contactará.",
+        input_schema: {
+          type: "object",
+          properties: {
+            property_ref: { type: "string" },
+            slot_start: { type: "string", description: "Inicio del hueco elegido (ISO), tal cual de get_available_slots" },
+            preferred_time: { type: "string", description: "Preferencia del cliente en sus palabras, si no eligió hueco" },
+          },
+          additionalProperties: false,
+        },
+      },
+    );
   }
 
   tools.push({
@@ -157,7 +175,8 @@ const SearchInput = z.object({
   ref: z.string().optional(),
   text: z.string().optional(),
 });
-const VisitInput = z.object({ property_ref: z.string().optional(), preferred_time: z.string().min(1) });
+const VisitInput = z.object({ property_ref: z.string().optional(), slot_start: z.string().optional(), preferred_time: z.string().optional() });
+const SlotsInput = z.object({ from_date: z.string().optional(), part_of_day: z.enum(["morning", "afternoon"]).optional() });
 const HandoffInput = z.object({ reason: z.string().min(1), summary: z.string().min(1) });
 const GuestInfoInput = z.object({ property_ref: z.string().optional() });
 const IncidentInput = z.object({ property_ref: z.string().optional(), description: z.string().min(1), urgent: z.boolean() });
@@ -195,13 +214,14 @@ export function searchCatalog(catalog: Property[], f: z.infer<typeof SearchInput
 }
 
 export interface ToolContext {
+  agency: Agency;
   catalog: Property[];
   lead: Lead;
   knowledge: string;
 }
 
 /** Ejecuta una herramienta. Devuelve el texto del tool_result y si fue error. */
-export function executeTool(name: string, rawInput: unknown, ctx: ToolContext, state: TurnState): { content: string; isError: boolean } {
+export async function executeTool(name: string, rawInput: unknown, ctx: ToolContext, state: TurnState): Promise<{ content: string; isError: boolean }> {
   const { catalog } = ctx;
   try {
     switch (name) {
@@ -221,11 +241,30 @@ export function executeTool(name: string, rawInput: unknown, ctx: ToolContext, s
         Object.assign(state.profilePatch, clean(profile));
         return { content: "Guardado en el CRM.", isError: false };
       }
+      case "get_available_slots": {
+        const f = SlotsInput.parse(rawInput);
+        const from = f.from_date && /^\d{4}-\d{2}-\d{2}$/.test(f.from_date) ? new Date(`${f.from_date}T00:00:00Z`) : undefined;
+        const slots = await availableSlots(ctx.agency, { from, partOfDay: f.part_of_day, max: 4 });
+        if (!slots.length) return { content: "No hay huecos libres en los próximos días con esa preferencia. Ofrece que el agente le proponga horario (schedule_visit solo con preferred_time).", isError: false };
+        return {
+          content: `Huecos libres (propón 2-3 al cliente con el día y la hora en su idioma; cada visita dura ${ctx.agency.visitMinutes} min):\n` +
+            slots.map((s) => `- slot_start=${s.start.toISOString()} → ${formatSlot(s.start, ctx.agency.timezone, ctx.lead.language)}`).join("\n"),
+          isError: false,
+        };
+      }
       case "schedule_visit": {
         const v = VisitInput.parse(rawInput);
-        state.visit = { propertyRef: v.property_ref, preferredTime: v.preferred_time };
         state.profilePatch.wants_visit = true;
-        return { content: "Solicitud de visita registrada. Un agente la confirmará pronto.", isError: false };
+        if (v.slot_start) {
+          const start = new Date(v.slot_start);
+          if (Number.isNaN(start.getTime())) return { content: "slot_start no válido: usa uno de get_available_slots.", isError: true };
+          if (!(await isFree(ctx.agency, start))) return { content: "Ese hueco ya no está libre. Vuelve a consultar get_available_slots y ofrece otro.", isError: true };
+          const label = formatSlot(start, ctx.agency.timezone, ctx.lead.language);
+          state.visit = { propertyRef: v.property_ref, preferredTime: label, startsAt: start.toISOString() };
+          return { content: `Visita agendada: ${label}. Confírmaselo al cliente y dile que le escribirán para recordárselo.`, isError: false };
+        }
+        state.visit = { propertyRef: v.property_ref, preferredTime: v.preferred_time || "a convenir" };
+        return { content: "Solicitud de visita registrada sin hora. Un agente le propondrá horario pronto.", isError: false };
       }
       case "get_guest_info": {
         const { property_ref } = GuestInfoInput.parse(rawInput);

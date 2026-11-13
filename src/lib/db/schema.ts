@@ -55,6 +55,7 @@ export interface LeadProfile {
   budget_night?: number;
   property_ref?: string;
   wants_booking?: boolean;
+  offered_slots?: string[]; // huecos de visita ofrecidos (ISO) a la espera de que elija
 }
 
 export const agencies = pgTable("agencies", {
@@ -69,6 +70,15 @@ export const agencies = pgTable("agencies", {
   assistantName: text("assistant_name").notNull().default("Sofía"),
   vertical: text("vertical").$type<Vertical>().notNull().default("venta"),
   knowledge: text("knowledge").notNull().default(""), // normas y preguntas frecuentes
+  feedUrl: text("feed_url"), // feed XML del CRM (formato Kyero u otro)
+  feedSyncedAt: timestamp("feed_synced_at", { withTimezone: true }),
+  feedStatus: text("feed_status"),
+  calendarIcsUrl: text("calendar_ics_url"), // dirección secreta iCal del calendario del agente (solo lectura)
+  calendarToken: text("calendar_token").notNull().default(sql`md5(random()::text || clock_timestamp()::text || 'cal')`),
+  workDays: text("work_days").notNull().default("1,2,3,4,5,6"), // 1=lunes ... 7=domingo
+  workHours: text("work_hours").notNull().default("10:00-14:00,16:30-19:30"),
+  visitMinutes: integer("visit_minutes").notNull().default(45),
+  timezone: text("timezone").notNull().default("Europe/Madrid"),
   inboundToken: text("inbound_token").notNull().default(sql`md5(random()::text || clock_timestamp()::text)`), // buzón de emails de portales
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -103,6 +113,10 @@ export const properties = pgTable("properties", {
   petsAllowed: text("pets_allowed").notNull().default("consultar"), // si | no | consultar
   bookingUrl: text("booking_url"),
   guestInfo: text("guest_info").notNull().default(""), // privado: solo para huéspedes confirmados
+  externalId: text("external_id"), // id en el CRM (feed)
+  ownerContact: text("owner_contact"), // privado: propietario
+  imageUrl: text("image_url"),
+  origin: text("origin").notNull().default("manual"), // manual | feed | voz
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -159,6 +173,8 @@ export const visits = pgTable("visits", {
   leadId: uuid("lead_id").notNull(),
   propertyId: uuid("property_id"),
   preferredTime: text("preferred_time").notNull(),
+  scheduledAt: timestamp("scheduled_at", { withTimezone: true }),
+  endsAt: timestamp("ends_at", { withTimezone: true }),
   status: text("status").notNull().default("pendiente"), // pendiente | confirmada | hecha | cancelada
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

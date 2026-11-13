@@ -126,10 +126,10 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
             {vis.map((v) => (
               <div key={v.id} className="flex items-center justify-between gap-2 border-t border-line py-2 text-sm first:border-0">
                 <div>
-                  <p>{catalog.find((c) => c.id === v.propertyId)?.ref ?? "Propiedad por definir"} · {v.preferredTime}</p>
-                  <p className="text-xs text-mute">{v.status}</p>
+                  <p>{catalog.find((c) => c.id === v.propertyId)?.ref ?? "Propiedad por definir"} · {v.scheduledAt ? v.scheduledAt.toLocaleString("es-ES", { timeZone: agency.timezone, weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : v.preferredTime}</p>
+                  <p className="text-xs text-mute">{{ pendiente: "Sin hora: proponle una", agendada: "Agendada por la IA · por confirmar", confirmada: "Confirmada", hecha: "Hecha", cancelada: "Cancelada" }[v.status] ?? v.status}</p>
                 </div>
-                {v.status === "pendiente" && (
+                {(v.status === "pendiente" || v.status === "agendada") && (
                   <form action={confirmVisitAction}>
                     <input type="hidden" name="id" value={v.id} /><input type="hidden" name="leadId" value={lead.id} /><input type="hidden" name="status" value="confirmada" />
                     <button className="btn">Confirmar</button>

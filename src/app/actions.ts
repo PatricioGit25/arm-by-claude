@@ -9,6 +9,8 @@ import { agencies, leads, properties, users, visits, STAGES, type Stage, type Ve
 import { createSession, destroySession, requireUser } from "@/lib/auth";
 import { logEvent, matchNewProperty, sendOutbound } from "@/lib/engine";
 import { ingestNote, ingestPortalEmail } from "@/lib/intake";
+import { syncFeed } from "@/lib/feed";
+import { addPropertyFromNote, describeDraft } from "@/lib/property-voice";
 import { LANGS, type Lang } from "@/lib/db/schema";
 
 export type FormState = { error?: string; ok?: string } | undefined;
@@ -170,8 +172,19 @@ export async function updateSettingsAction(_: FormState, form: FormData): Promis
     handoffThreshold: threshold,
     vertical: form.get("vertical") === "vacacional" ? "vacacional" : "venta",
     knowledge: String(form.get("knowledge") ?? "").trim().slice(0, 20000),
+    calendarIcsUrl: String(form.get("calendarIcsUrl") ?? "").trim() || null,
+    workDays: form.getAll("workDays").map(String).filter((d) => /^[1-7]$/.test(d)).join(",") || agency.workDays,
+    workHours: /^\s*\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}(\s*,\s*\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2})*\s*$/.test(String(form.get("workHours") ?? "")) ? String(form.get("workHours")).trim() : agency.workHours,
+    visitMinutes: Math.max(15, Math.min(240, Number(form.get("visitMinutes")) || agency.visitMinutes)),
+    feedUrl: String(form.get("feedUrl") ?? "").trim() || null,
   }).where(eq(agencies.id, agency.id));
   revalidatePath("/app", "layout");
+  const newFeed = String(form.get("feedUrl") ?? "").trim();
+  if (newFeed && newFeed !== agency.feedUrl) {
+    const fresh = (await db.select().from(agencies).where(eq(agencies.id, agency.id)))[0];
+    const r = await syncFeed(fresh);
+    return r.ok ? { ok: `Ajustes guardados. CRM conectado: ${r.message}` } : { error: `Ajustes guardados, pero el feed falló: ${r.message}` };
+  }
   return { ok: "Ajustes guardados" };
 }
 
@@ -226,4 +239,38 @@ export async function importEmailAction(_: FormState, form: FormData): Promise<F
   }
   revalidatePath("/app/leads");
   redirect(`/app/leads/${leadId}?nuevo=1`);
+}
+
+export async function addPropertyVoiceAction(_: FormState, form: FormData): Promise<FormState> {
+  const { agency } = await requireUser();
+  const note = String(form.get("note") ?? "").trim();
+  if (note.length < 15) return { error: "Dicta o escribe un poco más: tipo, zona, dormitorios, metros, precio…" };
+  try {
+    const { property, notified, missing } = await addPropertyFromNote(agency, note);
+    revalidatePath("/app/properties");
+    return {
+      ok: `Creada: ${describeDraft(property)}.${missing.length ? ` Falta: ${missing.join(", ")} (complétalo abajo).` : ""} ${notified ? `La IA avisó a ${notified} cliente(s) a los que les encaja.` : ""}`,
+    };
+  } catch (err) {
+    console.error("[ARM] Error en alta por voz:", err);
+    return { error: "No se pudo crear la propiedad. Inténtalo de nuevo." };
+  }
+}
+
+export async function syncFeedAction(_: FormState): Promise<FormState> {
+  const { agency } = await requireUser();
+  const r = await syncFeed(agency);
+  revalidatePath("/app/properties");
+  return r.ok ? { ok: r.message } : { error: r.message };
+}
+
+export async function updatePropertyAction(form: FormData) {
+  const { agency } = await requireUser();
+  const db = await getDb();
+  const num = (k: string) => Number(form.get(k) ?? 0) || 0;
+  await db.update(properties).set({
+    price: num("price"), bedrooms: num("bedrooms"), areaM2: num("area"),
+    title: String(form.get("title") ?? "").trim() || undefined,
+  }).where(and(eq(properties.id, String(form.get("id"))), eq(properties.agencyId, agency.id)));
+  revalidatePath("/app/properties");
 }

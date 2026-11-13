@@ -143,7 +143,12 @@ async function applyTurn(agency: Agency, lead: Lead, out: AgentOutput, catalog: 
 
   if (state.visit) {
     const prop = catalog.find((p) => p.ref === state.visit!.propertyRef);
-    await db.insert(visits).values({ agencyId: agency.id, leadId: lead.id, propertyId: prop?.id, preferredTime: state.visit.preferredTime });
+    const startsAt = state.visit.startsAt ? new Date(state.visit.startsAt) : null;
+    await db.insert(visits).values({
+      agencyId: agency.id, leadId: lead.id, propertyId: prop?.id, preferredTime: state.visit.preferredTime,
+      scheduledAt: startsAt, endsAt: startsAt ? new Date(startsAt.getTime() + agency.visitMinutes * 60000) : null,
+      status: startsAt ? "agendada" : "pendiente",
+    });
     await logEvent(agency.id, lead.id, "visit_requested", { ref: prop?.ref, when: state.visit.preferredTime });
     stage = "visita";
   }
@@ -166,7 +171,7 @@ async function applyTurn(agency: Agency, lead: Lead, out: AgentOutput, catalog: 
     if (!isGuest && stage !== "visita" && (!vacation || profile.wants_booking || profile.check_in || score >= agency.handoffThreshold)) stage = "listo";
     if (!lead.handedOffAt) patch.handedOffAt = new Date();
     await logEvent(agency.id, lead.id, "handoff", { reason: state.handoff?.reason, summary, score });
-    const visitTxt = state.visit ? `\n📅 Visita pedida: ${state.visit.preferredTime}${state.visit.propertyRef ? ` (${state.visit.propertyRef})` : ""}` : "";
+    const visitTxt = state.visit ? `\n📅 ${state.visit.startsAt ? "Visita agendada" : "Visita pedida"}: ${state.visit.preferredTime}${state.visit.propertyRef ? ` (${state.visit.propertyRef})` : ""}` : "";
     const title = vacation
       ? stage === "listo" ? `🔥 Quiere reservar: ${who}` : `💬 ${who} necesita al equipo`
       : `🔥 Lead listo: ${who} (${score}/100)`;
