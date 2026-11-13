@@ -208,9 +208,26 @@ export function searchCatalog(catalog: Property[], f: z.infer<typeof SearchInput
     .filter((p) => !f.guests || !p.maxGuests || p.maxGuests >= f.guests)
     .filter((p) => !f.pets || p.petsAllowed !== "no")
     .filter((p) => !f.town_or_zone || norm(`${p.town} ${p.zone}`).includes(norm(f.town_or_zone)))
-    .filter((p) => !f.text || norm(`${p.title} ${p.features.join(" ")} ${p.description}`).includes(norm(f.text)))
+    .filter((p) => !f.text || textMatches(`${p.title} ${p.features.join(" ")} ${p.description}`, f.text))
     .sort((a, b) => (f.guests ? a.maxGuests - b.maxGuests : b.price - a.price))
     .slice(0, 5);
+}
+
+const STOP = new Set(["y", "e", "con", "de", "del", "la", "el", "los", "las", "un", "una", "and", "with", "a", "the", "och", "med", "und", "mit", "et", "avec", "o", "or"]);
+const SYNONYMS: Record<string, string[]> = {
+  piscina: ["piscina", "pool", "pool", "pool", "schwimmbad", "piscine"], pool: ["piscina", "pool"], pol: ["piscina"],
+  terraza: ["terraza", "balcon", "terrace", "terrass", "terrasse"], terrace: ["terraza", "terrace"], terrass: ["terraza"], terrasse: ["terraza"], balcon: ["balcon", "terraza"],
+  vistas: ["vistas", "view", "views", "utsikt", "blick", "vue"], mar: ["mar", "sea", "hav", "meer", "mer"], sea: ["mar", "sea"], view: ["vistas", "view"], views: ["vistas", "view"],
+  garaje: ["garaje", "parking", "aparcamiento", "garage"], parking: ["garaje", "parking"],
+  playa: ["playa", "beach", "strand", "plage"], beach: ["playa", "beach"],
+  lavavajillas: ["lavavajillas", "dishwasher"], ascensor: ["ascensor", "lift", "elevator", "hiss", "aufzug"],
+};
+
+/** Cada palabra útil de la búsqueda (o un sinónimo/traducción) debe aparecer, en cualquier orden. */
+export function textMatches(haystack: string, query: string): boolean {
+  const hay = norm(haystack);
+  const words = norm(query).split(/[^a-z0-9ñ]+/).filter((w) => w.length > 1 && !STOP.has(w));
+  return words.every((w) => (SYNONYMS[w] ?? [w]).some((v) => hay.includes(norm(v))));
 }
 
 export interface ToolContext {
