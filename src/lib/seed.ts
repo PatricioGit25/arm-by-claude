@@ -3,6 +3,7 @@ import type { DB } from "./db";
 import { agencies, users, properties, leads, messages, events, type LeadProfile, type Stage, type Lang } from "./db/schema";
 import { scoreLead } from "./scoring";
 import { seedVacation, VACATION_SLUG } from "./seed-vacation";
+import { ensureAdmin, seedCommercial, SALES_SLUG } from "./seed-commercial";
 
 export const DEMO_EMAIL = "demo@arm.local";
 export const DEMO_PASSWORD = "demo1234";
@@ -105,6 +106,8 @@ export async function seedIfEmpty(db: DB): Promise<void> {
   const slugs = new Set((await db.select({ slug: agencies.slug }).from(agencies)).map((a) => a.slug));
   if (!slugs.has("costa-nerja")) await seedSales(db);
   if (!slugs.has(VACATION_SLUG)) await seedVacation(db);
+  if (!slugs.has(SALES_SLUG)) await seedCommercial(db);
+  await ensureAdmin(db);
 }
 
 async function seedSales(db: DB): Promise<void> {

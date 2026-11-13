@@ -13,7 +13,7 @@ export type Lang = "es" | "en" | "sv" | "de" | "fr";
 export const LANGS: Lang[] = ["es", "en", "sv", "de", "fr"];
 
 /** Tipo de negocio de la inmobiliaria. */
-export type Vertical = "venta" | "vacacional";
+export type Vertical = "venta" | "vacacional" | "comercial";
 
 export const STAGES = [
   "nuevo",
@@ -55,7 +55,14 @@ export interface LeadProfile {
   budget_night?: number;
   property_ref?: string;
   wants_booking?: boolean;
-  offered_slots?: string[]; // huecos de visita ofrecidos (ISO) a la espera de que elija
+  offered_slots?: string[];
+  // comercial (agencias interesadas en el ARM)
+  company?: string;
+  business_type?: string; // venta, alquiler vacacional, ambas
+  team_size?: number;
+  leads_month?: number;
+  crm?: string;
+  channels?: string; // huecos de visita ofrecidos (ISO) a la espera de que elija
 }
 
 export const agencies = pgTable("agencies", {

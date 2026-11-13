@@ -26,6 +26,7 @@ export default async function SettingsPage() {
             <select name="vertical" defaultValue={agency.vertical} className="input">
               <option value="venta">Inmobiliaria (venta)</option>
               <option value="vacacional">Alquiler vacacional</option>
+              {agency.vertical === "comercial" && <option value="comercial">Comercial (vender el ARM)</option>}
             </select>
           </div>
           <div><label className="label">Pueblo / zona</label><input name="town" className="input" defaultValue={agency.town} /></div>
@@ -37,7 +38,7 @@ export default async function SettingsPage() {
           </div>
           <div><label className="label">WhatsApp del agente (para avisos)</label><input name="agentPhone" className="input" defaultValue={agency.agentPhone ?? ""} placeholder="+34 600 000 000" /></div>
           <div><label className="label">WhatsApp Business · phone_number_id</label><input name="waId" className="input" defaultValue={agency.waPhoneNumberId ?? ""} /></div>
-          {agency.vertical === "venta" && (
+          {agency.vertical !== "vacacional" && (
             <fieldset className="space-y-3 rounded-xl border border-line p-3">
               <legend className="px-1 text-sm font-semibold">📅 Agenda de visitas</legend>
               <div>

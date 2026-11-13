@@ -275,7 +275,11 @@ async function followupText(agency: Agency, lead: Lead, attempt: number, fresh: 
     de: [`Hallo${name}! Konnten Sie sich die Unterkünfte ansehen? Das Team bestätigt Ihnen gern die Verfügbarkeit für Ihre Daten. 😊`, `Hallo${name}, suchen Sie noch eine Unterkunft in ${agency.town || "der Gegend"}? Gute Termine sind schnell weg.`, `Hallo${name}, wie laufen die Reisepläne? Wenn sich Daten oder Personenzahl geändert haben, sagen Sie es mir.`, `Hallo${name}, meine letzte Nachricht, um nicht zu stören. Wenn Sie wieder nach ${agency.town || "an die Küste"} möchten, sind wir da. ☀️`],
     fr: [`Bonjour${name} ! Avez-vous pu regarder les logements envoyés ? L'équipe peut vous confirmer la disponibilité pour vos dates. 😊`, `Bonjour${name}, cherchez-vous toujours un logement à ${agency.town || "la côte"} ? Les bonnes dates partent vite.`, `Bonjour${name}, où en sont vos projets de voyage ? Si les dates ont changé, dites-le-moi.`, `Bonjour${name}, dernier message pour ne pas vous déranger. Quand vous voudrez revenir à ${agency.town || "la côte"}, nous serons là. ☀️`],
   };
-  const table = agency.vertical === "vacacional" ? VACATION : SALE;
+  const COMMERCIAL: Record<string, string[]> = {
+    es: [`¡Hola${name}! ¿Pudiste pensar en lo del asistente para tu agencia? Si quieres, te lo enseño funcionando con vuestras propiedades en 30 minutos.`, `Hola${name}, esta semana tengo huecos para la demo. ¿Te va bien que te proponga uno?`, `Hola${name}, te escribo por última vez para no molestar. Cuando quieras verlo, aquí estoy. 🙌`],
+    en: [`Hi${name}! Did you get a chance to think about the assistant for your agency? I can show it working with your own listings in 30 minutes.`, `Hi${name}, I have demo slots this week. Shall I suggest one?`, `Hi${name}, last message so I don't bother you. Whenever you want to see it, I'm here. 🙌`],
+  };
+  const table = agency.vertical === "vacacional" ? VACATION : agency.vertical === "comercial" ? COMMERCIAL : SALE;
   const T = table[lead.language] ?? table.en;
   const base = T[Math.min(attempt - 1, T.length - 1)];
   return fresh.length ? `${base}\n${fresh.map((f) => "• " + f.split(" | ").slice(0, 2).join(": ")).join("\n")}` : base;
@@ -332,7 +336,7 @@ export async function morningSummary(agencyId: string, now = new Date()) {
     switch (step) {
       case 0: return true;
       case 1: return l.inboundCount >= 2 || !!l.handedOffAt || done;
-      case 2: return (vacation ? !!p.check_in && !!p.guests : !!p.budget_max && !!p.property_type) || !!l.handedOffAt || done;
+      case 2: return (vacation ? !!p.check_in && !!p.guests : agency?.vertical === "comercial" ? !!p.company : !!p.budget_max && !!p.property_type) || !!l.handedOffAt || done;
       case 3: return vacation ? !!p.wants_booking || l.stage === "listo" || done : !!l.handedOffAt || ["listo", "visita", "oferta", "cerrado"].includes(l.stage);
       case 4: return vacation ? done : ["visita", "oferta", "cerrado"].includes(l.stage);
       default: return l.stage === "cerrado";

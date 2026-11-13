@@ -70,7 +70,14 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
           )}
           <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
             <Field k="Teléfono" v={lead.phone} /><Field k="Email" v={lead.email} />
-            {vacation ? (
+            {vertical === "comercial" ? (
+              <>
+                <Field k="Agencia" v={p.company} /><Field k="Zona" v={p.zones?.join(", ")} />
+                <Field k="Tipo" v={p.business_type} /><Field k="Equipo" v={p.team_size ? `${p.team_size} personas` : undefined} />
+                <Field k="Contactos/mes" v={p.leads_month ? String(p.leads_month) : undefined} /><Field k="CRM" v={p.crm} />
+                <Field k="Canales" v={p.channels} /><Field k="Quiere demo" v={p.wants_visit ? "Sí" : undefined} />
+              </>
+            ) : vacation ? (
               <>
                 <Field k="Llegada" v={p.check_in} /><Field k="Salida" v={p.check_out} />
                 <Field k="Personas" v={p.guests ? String(p.guests) : undefined} /><Field k="Mascota" v={p.pets === undefined ? undefined : p.pets ? "Sí" : "No"} />
@@ -127,7 +134,7 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
             {vis.map((v) => (
               <div key={v.id} className="flex items-center justify-between gap-2 border-t border-line py-2 text-sm first:border-0">
                 <div>
-                  <p>{catalog.find((c) => c.id === v.propertyId)?.ref ?? "Propiedad por definir"} · {v.scheduledAt ? v.scheduledAt.toLocaleString("es-ES", { timeZone: agency.timezone, weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : v.preferredTime}</p>
+                  <p>{vertical === "comercial" ? "Demo" : catalog.find((c) => c.id === v.propertyId)?.ref ?? "Propiedad por definir"} · {v.scheduledAt ? v.scheduledAt.toLocaleString("es-ES", { timeZone: agency.timezone, weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : v.preferredTime}</p>
                   <p className="text-xs text-mute">{{ pendiente: "Sin hora: proponle una", agendada: "Agendada por la IA · por confirmar", confirmada: "Confirmada", hecha: "Hecha", cancelada: "Cancelada" }[v.status] ?? v.status}</p>
                 </div>
                 {(v.status === "pendiente" || v.status === "agendada") && (

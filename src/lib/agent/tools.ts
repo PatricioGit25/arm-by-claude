@@ -34,7 +34,19 @@ const PROFILE_FIELDS_VACATION = {
   wants_booking: { type: "boolean", description: "Quiere reservar o confirmar disponibilidad" },
 } as const;
 
+const PROFILE_FIELDS_COMMERCIAL = {
+  company: { type: "string", description: "Nombre de la agencia" },
+  zones: { type: "array", items: { type: "string" }, description: "Pueblos o zonas donde trabaja" },
+  business_type: { type: "string", description: "venta, alquiler vacacional o ambas" },
+  team_size: { type: "integer", description: "Personas en el equipo" },
+  leads_month: { type: "integer", description: "Contactos de clientes al mes, aproximado" },
+  crm: { type: "string", description: "CRM o programa que usa (Inmovilla, Witei, Lodgify, ninguno...)" },
+  channels: { type: "string", description: "Por dónde le llegan los clientes (Idealista, WhatsApp, web, teléfono...)" },
+  wants_visit: { type: "boolean", description: "Quiere ver la demo" },
+} as const;
+
 export function toolsFor(vertical: Vertical): Anthropic.Tool[] {
+  if (vertical === "comercial") return commercialTools();
   const vacation = vertical === "vacacional";
   const tools: Anthropic.Tool[] = [
     {
@@ -143,6 +155,45 @@ export function toolsFor(vertical: Vertical): Anthropic.Tool[] {
   return tools;
 }
 
+function commercialTools(): Anthropic.Tool[] {
+  const { name, email, phone, language, notes } = PROFILE_FIELDS_COMMON;
+  return [
+    {
+      name: "update_lead_profile",
+      description: "Guarda en el CRM lo que sepas de la agencia interesada y de la persona. Llámala cada vez que aprendas algo.",
+      input_schema: { type: "object", properties: { name, email, phone, language, notes, ...PROFILE_FIELDS_COMMERCIAL }, additionalProperties: false },
+    },
+    {
+      name: "get_available_slots",
+      description: "Huecos libres REALES para una videollamada o visita de demo de 30-45 minutos. Úsala antes de proponer horarios.",
+      input_schema: {
+        type: "object",
+        properties: { from_date: { type: "string" }, part_of_day: { type: "string", enum: ["morning", "afternoon"] } },
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "schedule_visit",
+      description: "Agenda la demo en el calendario. Pasa slot_start exactamente como lo devolvió get_available_slots.",
+      input_schema: {
+        type: "object",
+        properties: { slot_start: { type: "string" }, preferred_time: { type: "string" } },
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "handoff_to_agent",
+      description: "Avisa a la persona responsable de VistaAlta con un resumen: cuando agenden la demo, quieran hablar con alguien, pregunten algo que no sabes o pidan un presupuesto especial.",
+      input_schema: {
+        type: "object",
+        properties: { reason: { type: "string" }, summary: { type: "string", description: "Resumen en español: agencia, zona, tipo, volumen, CRM, canales, qué le interesa y próximo paso" } },
+        required: ["reason", "summary"],
+        additionalProperties: false,
+      },
+    },
+  ];
+}
+
 const ProfileInput = z.object({
   name: z.string().min(1).optional(),
   email: z.string().min(3).optional(),
@@ -164,6 +215,12 @@ const ProfileInput = z.object({
   budget_night: z.number().int().positive().optional(),
   property_ref: z.string().optional(),
   wants_booking: z.boolean().optional(),
+  company: z.string().optional(),
+  business_type: z.string().optional(),
+  team_size: z.number().int().min(1).max(500).optional(),
+  leads_month: z.number().int().min(0).max(100000).optional(),
+  crm: z.string().optional(),
+  channels: z.string().optional(),
 });
 const SearchInput = z.object({
   type: z.string().optional(),

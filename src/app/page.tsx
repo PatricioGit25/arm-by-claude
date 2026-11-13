@@ -26,7 +26,7 @@ export default function Home() {
           <Logo className="text-lg" />
           <div className="flex items-center gap-2">
             <Link href="/login" className="hidden rounded-full px-3 py-1.5 text-sm text-mute transition hover:text-fg sm:inline">Entrar</Link>
-            <Link href="/chat/costa-nerja" className="btn">Probar la demo</Link>
+            <Link href="/chat/vistaalta" className="btn">Solicitar demo</Link>
           </div>
         </div>
       </header>
@@ -43,8 +43,8 @@ export default function Home() {
               Tu equipo recibe solo lo que necesita a una persona, con todo resumido.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
-              <Link href="/chat/costa-nerja" className="btn !px-5 !py-2.5">Probar como comprador</Link>
-              <Link href="/chat/south-costa-demo" className="btn-ghost !px-5 !py-2.5">Probar alquiler vacacional</Link>
+              <Link href="/chat/vistaalta" className="btn !px-5 !py-2.5">Solicitar demo</Link>
+              <Link href="/chat/costa-nerja" className="btn-ghost !px-5 !py-2.5">Probarlo como cliente</Link>
             </div>
             <p className="mt-6 text-sm text-mute">🇪🇸 🇬🇧 🇸🇪 🇩🇪 🇫🇷 &nbsp;Responde en el idioma de cada cliente.</p>
           </div>
@@ -106,12 +106,43 @@ export default function Home() {
           </div>
         </section>
 
+        <section id="precios" className="border-t border-line py-16 sm:py-20">
+          <p className="eyebrow">Precios</p>
+          <h2 className="mt-3 max-w-2xl text-3xl font-semibold sm:text-4xl">Simple. Sin permanencia. Pruébalo antes de pagar.</h2>
+          <div className="mt-10 grid gap-4 lg:grid-cols-[1fr_1.3fr]">
+            <div className="card flex flex-col !p-6">
+              <p className="text-sm font-medium text-mute">Prueba piloto</p>
+              <p className="mt-2 text-4xl font-semibold tabular">0 €</p>
+              <p className="mt-1 text-sm text-mute">30 días, con tus propiedades y tu equipo</p>
+              <ul className="mt-6 space-y-2 text-sm">
+                {["Configuración en persona", "Asistente con tu nombre y tu tono", "Revisamos juntos las primeras conversaciones", "Balance con números al final"].map((x) => (
+                  <li key={x} className="flex gap-2"><span className="text-arm">✓</span>{x}</li>
+                ))}
+              </ul>
+              <Link href="/chat/vistaalta" className="btn-ghost mt-8">Empezar el piloto</Link>
+            </div>
+            <div className="card relative flex flex-col overflow-hidden !p-6 ring-1 ring-arm/30">
+              <span className="absolute right-5 top-5 rounded-full bg-arm/10 px-2.5 py-0.5 text-xs font-medium text-arm">Todo incluido</span>
+              <p className="text-sm font-medium text-mute">ARM por agencia</p>
+              <p className="mt-2 flex items-baseline gap-1"><span className="text-4xl font-semibold tabular">99 €</span><span className="text-mute">/mes</span></p>
+              <p className="mt-1 text-sm text-mute">Sin permanencia · alta y configuración gratis</p>
+              <ul className="mt-6 grid gap-2 text-sm sm:grid-cols-2">
+                {["Asistente 24/7 en WhatsApp y web", "5 idiomas: ES, EN, SV, DE, FR", "Idealista, llamadas y oficina", "Visitas en tu calendario", "Conexión con tu CRM", "Seguimiento automático", "Tu día + resumen en audio", "Alta de propiedades por voz", "Modo alquiler vacacional", "Soporte cercano en la zona"].map((x) => (
+                  <li key={x} className="flex gap-2"><span className="text-arm">✓</span>{x}</li>
+                ))}
+              </ul>
+              <Link href="/chat/vistaalta" className="btn mt-8">Solicitar demo</Link>
+              <p className="mt-4 text-xs leading-relaxed text-mute">El coste de WhatsApp Business que cobra Meta va aparte y depende del uso. Agencias con varias oficinas o mucho volumen: precio a medida. ¿También necesitas web o vídeo? Lo combinamos.</p>
+            </div>
+          </div>
+        </section>
+
         <section className="my-10 overflow-hidden rounded-3xl bg-fg px-6 py-14 text-center text-ink sm:px-12">
           <h2 className="text-3xl font-semibold sm:text-4xl">Míralo funcionando con tu catálogo.</h2>
           <p className="mx-auto mt-3 max-w-xl text-ink/70">Prueba piloto de 30 días, sin permanencia. Lo configuramos con tus propiedades, tus normas y tu tono.</p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
-            <Link href="/chat/costa-nerja" className="inline-flex items-center rounded-full bg-ink px-5 py-2.5 text-sm font-medium text-fg transition hover:opacity-90">Probar la demo</Link>
-            <Link href="/login" className="inline-flex items-center rounded-full border border-ink/25 px-5 py-2.5 text-sm font-medium text-ink transition hover:border-ink/60">Ver el panel</Link>
+            <Link href="/chat/vistaalta" className="inline-flex items-center rounded-full bg-ink px-5 py-2.5 text-sm font-medium text-fg transition hover:opacity-90">Solicitar demo</Link>
+            <Link href="/chat/costa-nerja" className="inline-flex items-center rounded-full border border-ink/25 px-5 py-2.5 text-sm font-medium text-ink transition hover:border-ink/60">Probarlo como cliente</Link>
           </div>
         </section>
       </main>

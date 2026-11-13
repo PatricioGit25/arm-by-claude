@@ -47,12 +47,14 @@ export async function buildToday(agency: Agency, now = new Date()) {
     const lead = leadById.get(v.leadId);
     if (!lead) continue;
     const prop = v.propertyId ? propById.get(v.propertyId) : undefined;
-    const where = prop ? `${prop.ref} · ${prop.title}` : "propiedad por definir";
+    const sales = agency.vertical === "comercial";
+    const where = sales ? (lead.profile.company ?? "agencia por confirmar") : prop ? `${prop.ref} · ${prop.title}` : "propiedad por definir";
+    const what = sales ? "demo" : "visita";
     if (v.scheduledAt && v.scheduledAt >= dayStart && v.scheduledAt < dayEnd) {
-      items.push({ kind: "visit", priority: 1, time: time(v.scheduledAt), title: `Visita con ${lead.name ?? "cliente"}`, detail: where, href: `/app/leads/${lead.id}`, phone: lead.phone });
+      items.push({ kind: "visit", priority: 1, time: time(v.scheduledAt), title: `${sales ? "Demo" : "Visita"} con ${lead.name ?? "cliente"}`, detail: where, href: `/app/leads/${lead.id}`, phone: lead.phone });
     } else if (v.status === "agendada" || v.status === "pendiente") {
       const when = v.scheduledAt ? v.scheduledAt.toLocaleString("es-ES", { timeZone: tz, weekday: "long", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "sin hora";
-      items.push({ kind: "confirm", priority: 3, title: `Confirmar visita de ${lead.name ?? "cliente"}`, detail: `${when} · ${where}`, href: `/app/leads/${lead.id}`, phone: lead.phone });
+      items.push({ kind: "confirm", priority: 3, title: `Confirmar ${what} de ${lead.name ?? "cliente"}`, detail: `${when} · ${where}`, href: `/app/leads/${lead.id}`, phone: lead.phone });
     }
   }
 
@@ -63,7 +65,7 @@ export async function buildToday(agency: Agency, now = new Date()) {
     } else if (l.stage === "listo" && (!contacted || (l.handedOffAt && contacted < l.handedOffAt))) {
       items.push({
         kind: "hot", priority: 2, title: `Llamar a ${l.name ?? "cliente"} (${l.score}/100)`,
-        detail: l.summary ?? (agency.vertical === "vacacional" ? "Quiere reservar" : "Listo para comprar"), href: `/app/leads/${l.id}`, phone: l.phone,
+        detail: l.summary ?? (agency.vertical === "vacacional" ? "Quiere reservar" : agency.vertical === "comercial" ? "Quiere hablar del ARM" : "Listo para comprar"), href: `/app/leads/${l.id}`, phone: l.phone,
       });
     } else if ((l.channel === "portal" || l.channel === "manual") && !contacted && l.createdAt > new Date(now.getTime() - 3 * DAY) && !["perdido", "cerrado"].includes(l.stage)) {
       items.push({ kind: "send", priority: 4, title: `Enviar el WhatsApp preparado a ${l.name ?? "cliente"}`, detail: `Entró por ${l.source ?? l.channel}`, href: `/app/leads/${l.id}`, phone: l.phone });

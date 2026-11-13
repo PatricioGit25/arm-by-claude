@@ -170,7 +170,7 @@ export async function updateSettingsAction(_: FormState, form: FormData): Promis
     agentPhone: String(form.get("agentPhone") ?? "").trim() || null,
     waPhoneNumberId: String(form.get("waId") ?? "").trim() || null,
     handoffThreshold: threshold,
-    vertical: form.get("vertical") === "vacacional" ? "vacacional" : "venta",
+    vertical: (["venta", "vacacional", "comercial"].includes(String(form.get("vertical"))) ? String(form.get("vertical")) : agency.vertical) as Vertical,
     knowledge: String(form.get("knowledge") ?? "").trim().slice(0, 20000),
     calendarIcsUrl: String(form.get("calendarIcsUrl") ?? "").trim() || null,
     workDays: form.getAll("workDays").map(String).filter((d) => /^[1-7]$/.test(d)).join(",") || agency.workDays,

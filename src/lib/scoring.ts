@@ -16,6 +16,16 @@ export function scoreLead(
     reasons.push(`+${n} ${why}`);
   };
 
+  if (vertical === "comercial") {
+    if (profile.company) add(20, "sabemos qué agencia es");
+    if (profile.business_type) add(10, "tipo de negocio claro");
+    if (profile.leads_month || profile.channels) add(10, "conocemos su volumen o canales");
+    if (profile.crm) add(10, "sabemos qué CRM usa");
+    if (opts.hasContact) add(20, "dejó teléfono o email");
+    if (profile.wants_visit) add(30, "quiere ver la demo");
+    return { score: Math.min(100, score), reasons };
+  }
+
   if (vertical === "vacacional") {
     if (profile.check_in) add(25, "fechas definidas");
     if (profile.guests) add(15, "sabe cuántas personas son");
@@ -112,13 +122,21 @@ const LABELS: Record<Stage, string> = {
   incidencia: "Incidencia abierta",
 };
 
+const COMMERCIAL_LABELS: Partial<Record<Stage, string>> = {
+  calificando: "Conversando (IA)",
+  listo: "Quiere hablar",
+  visita: "Demo agendada",
+  oferta: "Propuesta enviada",
+  cerrado: "Cliente",
+};
+
 const VACATION_LABELS: Partial<Record<Stage, string>> = {
   calificando: "Consultando (IA)",
   listo: "Quiere reservar",
 };
 
 export function stageLabel(stage: Stage, vertical: Vertical = "venta"): string {
-  return (vertical === "vacacional" && VACATION_LABELS[stage]) || LABELS[stage] || stage;
+  return (vertical === "vacacional" && VACATION_LABELS[stage]) || (vertical === "comercial" && COMMERCIAL_LABELS[stage]) || LABELS[stage] || stage;
 }
 
 /** Columnas del pipeline según el tipo de negocio. */

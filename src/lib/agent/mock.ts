@@ -8,6 +8,7 @@ import { detectLang } from "../i18n";
 import { formatPrice, norm, scoreLead } from "../scoring";
 import { searchCatalog } from "./tools";
 import { runMockVacationAgent } from "./mock-vacation";
+import { runMockCommercialAgent } from "./mock-commercial";
 import { availableSlots, formatSlot } from "../calendar";
 import { emptyTurnState, type AgentInput, type AgentOutput } from "./types";
 
@@ -124,6 +125,7 @@ export function extractProfile(raw: string, towns: string[]): Partial<LeadProfil
 
 export async function runMockAgent(input: AgentInput): Promise<AgentOutput> {
   if (input.agency.vertical === "vacacional") return runMockVacationAgent(input);
+  if (input.agency.vertical === "comercial") return runMockCommercialAgent(input);
   const { agency, lead, history, catalog } = input;
   const state = emptyTurnState();
   const lastIn = [...history].reverse().find((m) => m.direction === "in");
@@ -215,7 +217,7 @@ export async function runMockAgent(input: AgentInput): Promise<AgentOutput> {
 }
 
 /** ¿Eligió uno de los huecos ofrecidos? ("2", "el segundo", "the first", "lördag"...) */
-function pickSlot(text: string, offered: string[], tz: string): string | undefined {
+export function pickSlot(text: string, offered: string[], tz: string): string | undefined {
   const t = norm(text);
   const ord: [RegExp, number][] = [
     [/^\s*(?:el |la |opcion |option |nummer |nr\.? |numero )?1\b|\b(primer[oa]?|first|forsta|erste[nr]?|premier|premiere)\b/, 0],

@@ -40,7 +40,9 @@ export default async function LeadsPage() {
                       <ScoreBar score={l.score} threshold={agency.handoffThreshold} />
                     </div>
                     <p className="mt-1 truncate text-xs text-mute">
-                      {(agency.vertical === "vacacional"
+                      {(agency.vertical === "comercial"
+                        ? [l.profile.company, l.profile.business_type, l.profile.crm]
+                        : agency.vertical === "vacacional"
                         ? [l.profile.check_in && `${l.profile.check_in}${l.profile.check_out ? ` → ${l.profile.check_out}` : ""}`, l.profile.guests && `${l.profile.guests} pers.`, l.profile.pets && "mascota"]
                         : [l.profile.property_type, l.profile.bedrooms_min && `${l.profile.bedrooms_min} dorm`, l.profile.budget_max && `≤ ${formatPrice(l.profile.budget_max)}`]
                       ).filter(Boolean).join(" · ") || (l.summary ? l.summary.slice(0, 60) : "Perfil por completar")}
