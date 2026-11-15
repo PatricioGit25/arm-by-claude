@@ -127,6 +127,7 @@ export const properties = pgTable("properties", {
   imageUrl: text("image_url"),
   origin: text("origin").notNull().default("manual"), // manual | feed | voz | import
   agentId: uuid("agent_id"), // agente que lleva el inmueble
+  extraAgentId: uuid("extra_agent_id"), // persona de contacto adicional
   communityFees: text("community_fees"), // "120 €/mes"
   ibi: text("ibi"), // "450 €/año"
   touristLicense: text("tourist_license"), // "Sí (VFT/MA/12345)" | "No"

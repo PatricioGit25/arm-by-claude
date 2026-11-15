@@ -47,30 +47,41 @@ const TYPES: [RegExp, string][] = [
 export async function importCatalog(agency: Agency, raw: string) {
   const text = raw.trim().replace(/^﻿/, "");
   let rows: Row[];
+  let staff: Row[] = [];
   if (text.startsWith("[") || text.startsWith("{")) {
-    const parsed = JSON.parse(text) as Row[] | { properties?: Row[] };
-    rows = Array.isArray(parsed) ? parsed : parsed.properties ?? [];
+    const parsed = JSON.parse(text) as Row[] | { properties?: Row[]; inmuebles?: Row[]; agentes?: Row[]; agents?: Row[] };
+    rows = Array.isArray(parsed) ? parsed : parsed.inmuebles ?? parsed.properties ?? [];
+    staff = Array.isArray(parsed) ? [] : parsed.agentes ?? parsed.agents ?? [];
   } else rows = parseCsv(text);
   if (!rows.length) throw new Error("No encontré inmuebles en el archivo");
 
   const db = await getDb();
   const team = await db.select().from(agents).where(eq(agents.agencyId, agency.id));
   let created = 0, updated = 0, newAgents = 0;
+  const ensureAgent = async (name: string, phone?: string, email?: string) => {
+    let a = team.find((t) => t.name.toLowerCase() === name.toLowerCase());
+    if (!a) {
+      [a] = await db.insert(agents).values({ agencyId: agency.id, name, phone: phone || null, email: email || null }).returning();
+      team.push(a);
+      newAgents++;
+    } else if ((!a.phone && phone) || (!a.email && email)) {
+      await db.update(agents).set({ phone: a.phone ?? phone ?? null, email: a.email ?? email ?? null }).where(eq(agents.id, a.id));
+    }
+    return a;
+  };
+  for (const s of staff) {
+    const name = str(s.nombre ?? s.name);
+    if (name) await ensureAgent(name, str(s.telefono ?? s.phone), str(s.email));
+  }
   for (const r of rows) {
     const ref = str(r.ref ?? r.referencia);
     const title = str(r.titulo ?? r.title);
     if (!ref || !title) continue;
-    let agentId: string | null = null;
     const agentName = str(r.agente ?? r.agent);
-    if (agentName) {
-      let a = team.find((t) => t.name.toLowerCase() === agentName.toLowerCase());
-      if (!a) {
-        [a] = await db.insert(agents).values({ agencyId: agency.id, name: agentName, phone: str(r.agente_tel) || null, email: str(r.agente_email) || null }).returning();
-        team.push(a);
-        newAgents++;
-      }
-      agentId = a.id;
-    }
+    const agentId = agentName ? (await ensureAgent(agentName, str(r.agente_tel), str(r.agente_email))).id : null;
+    const extraName = str(r.contacto_adicional);
+    const extraAgentId = extraName ? (await ensureAgent(extraName, str(r.contacto_adicional_tel))).id : null;
+    const estado = str(r.estado).toLowerCase();
     const rawType = str(r.tipo ?? r.type);
     const feats = Array.isArray(r.caracteristicas) ? (r.caracteristicas as unknown[]).map(str) : str(r.caracteristicas).split(/[;|]/).map((x) => x.trim());
     const values = {
@@ -79,7 +90,8 @@ export async function importCatalog(agency: Agency, raw: string) {
       town: str(r.pueblo ?? r.town) || agency.town || "—", zone: str(r.zona), description: str(r.descripcion).slice(0, 2000),
       features: feats.filter(Boolean).slice(0, 15), communityFees: str(r.gastos) || null, ibi: str(r.ibi) || null,
       touristLicense: str(r.licencia_turistica) || null, bookingUrl: str(r.enlace ?? r.url) || null, imageUrl: str(r.imagen) || null,
-      agentId, origin: "import", status: "disponible",
+      agentId, extraAgentId, origin: "import",
+      status: estado.startsWith("reserv") ? "reservada" : estado.startsWith("vend") ? "vendida" : "disponible",
     };
     const prev = (await db.select().from(properties).where(and(eq(properties.agencyId, agency.id), eq(properties.ref, ref))))[0];
     if (prev) {

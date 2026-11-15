@@ -249,6 +249,7 @@ export function describeProperty(p: Property): string {
     p.ibi && `IBI: ${p.ibi}`,
     p.touristLicense && `licencia turística: ${p.touristLicense}`,
     p.bookingUrl && `anuncio: ${p.bookingUrl}`,
+    p.status === "reservada" && "RESERVADA (ya no se puede ofrecer; ofrece alternativas)",
   ].filter(Boolean).join(" | ");
   return `${p.ref} | ${p.title} | ${p.type} | ${formatPrice(p.price)} | ${p.bedrooms} dorm, ${p.bathrooms} baños, ${p.areaM2} m² | ${p.town}${p.zone ? ` (${p.zone})` : ""} | ${p.features.join(", ")}${extra ? ` | ${extra}` : ""} | ${p.description}`;
 }

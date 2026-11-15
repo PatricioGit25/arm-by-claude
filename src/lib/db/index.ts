@@ -117,6 +117,7 @@ CREATE TABLE IF NOT EXISTS agents (
 );
 ALTER TABLE agencies ADD COLUMN IF NOT EXISTS owner_approval boolean NOT NULL DEFAULT false;
 ALTER TABLE properties ADD COLUMN IF NOT EXISTS agent_id uuid;
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS extra_agent_id uuid;
 ALTER TABLE properties ADD COLUMN IF NOT EXISTS community_fees text;
 ALTER TABLE properties ADD COLUMN IF NOT EXISTS ibi text;
 ALTER TABLE properties ADD COLUMN IF NOT EXISTS tourist_license text;

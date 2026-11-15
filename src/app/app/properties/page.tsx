@@ -73,6 +73,7 @@ export default async function PropertiesPage() {
                 <p className="mt-1 flex flex-wrap gap-2 text-[11px] text-mute">
                   {p.origin !== "manual" && <span className="chip">{p.origin === "feed" ? "Desde tu CRM" : "Dictada"}</span>}
                   {p.ownerContact && <span className="chip">🔒 Propietario: {p.ownerContact}</span>}
+                  {p.extraAgentId && team.find((a) => a.id === p.extraAgentId) && <span className="chip">+ {team.find((a) => a.id === p.extraAgentId)!.name}</span>}
                 </p>
                 {p.origin === "voz" && (
                   <details className="mt-2 text-xs">
