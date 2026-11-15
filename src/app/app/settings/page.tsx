@@ -107,7 +107,7 @@ export default async function SettingsPage() {
             <div className="space-y-3">
               {listingAgents.map((a) => (
                 <details key={a.id} className="rounded-xl border border-line p-3">
-                  <summary className="cursor-pointer text-sm font-medium">{a.name} <span className="font-normal text-mute">· {a.calendarIcsUrl ? "📅 calendario conectado" : "sin calendario"}{!a.doesVisits ? " · no hace visitas" : ""}{a.languages?.length ? ` · ${a.languages.join("/").toUpperCase()}` : ""}{a.maxPrice ? ` · hasta ${a.maxPrice.toLocaleString("es-ES")} €` : ""}{a.backup ? " · suplente" : ""}</span></summary>
+                  <summary className="cursor-pointer text-sm font-medium">{a.name} <span className="font-normal text-mute">· {a.calendarIcsUrl ? "📅 calendario conectado" : "sin calendario"}{!a.doesVisits ? " · no hace visitas" : ""}{a.languages?.length ? ` · ${a.languages.join("/").toUpperCase()}` : ""}{a.maxPrice ? ` · hasta ${a.maxPrice.toLocaleString("es-ES")} €` : ""}{a.backup ? ` · suplente ${a.backupRank}` : ""}</span></summary>
                   <ActionForm action={saveAgentAction} submit="Guardar" className="mt-3 space-y-2">
                     <input type="hidden" name="id" value={a.id} />
                     <input name="name" defaultValue={a.name} className="input" aria-label="Nombre" />
@@ -128,6 +128,7 @@ export default async function SettingsPage() {
                       </div>
                       <label className="flex items-center gap-2"><span className="text-xs text-mute">Solo inmuebles hasta</span><input name="maxPrice" inputMode="numeric" defaultValue={a.maxPrice ?? ""} className="input w-32 py-1" placeholder="sin límite" aria-label="Precio máximo" /> €</label>
                       <label className="flex items-start gap-2"><input type="checkbox" name="backup" defaultChecked={a.backup} className="mt-1" /> <span>Suplente<br /><span className="text-xs text-mute">Hace la visita cuando el agente del inmueble no habla el idioma del cliente o no está libre.</span></span></label>
+                      <label className="flex items-center gap-2 pl-6"><span className="text-xs text-mute">Orden de suplente</span><input name="backupRank" type="number" min={1} max={9} defaultValue={a.backupRank} className="input w-16 py-1" aria-label="Orden de suplente" /><span className="text-xs text-mute">1 = el primero en cubrir</span></label>
                     </fieldset>
                   </ActionForm>
                 </details>

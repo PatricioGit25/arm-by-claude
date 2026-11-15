@@ -9,7 +9,7 @@ import { formatPrice, propertyMatches, scoreLead, stageLabel, stagesFor } from "
 import { LANG_FLAG, LANG_LABEL } from "@/lib/i18n";
 import { ScoreBar, StageBadge } from "@/components/StageBadge";
 import { Linkify } from "@/components/Linkify";
-import { agentReplyAction, confirmVisitAction, markGuestAction, setStageAction, toggleAiAction } from "@/app/actions";
+import { agentReplyAction, confirmVisitAction, setVisitAgentAction, markGuestAction, setStageAction, toggleAiAction } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -164,7 +164,17 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
                   <p className="text-xs text-mute">{{ pendiente: "Sin hora: proponle una", agendada: "Agendada por la IA · por confirmar", por_confirmar: "Pendiente del propietario", confirmada: "Confirmada · el cliente ya lo sabe", hecha: "Hecha", cancelada: "Cancelada" }[v.status] ?? v.status}{team.find((a) => a.id === v.agentId) ? ` · ${team.find((a) => a.id === v.agentId)!.name}` : ""}</p>
                 </div>
                 {["pendiente", "agendada", "por_confirmar"].includes(v.status) && (
-                  <div className="flex shrink-0 gap-1.5">
+                  <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
+                    {team.length > 1 && (
+                      <form action={setVisitAgentAction} className="flex gap-1">
+                        <input type="hidden" name="id" value={v.id} />
+                        <select name="agentId" defaultValue={v.agentId ?? ""} className="input !w-auto !py-1 text-xs" aria-label="Quién hace la visita">
+                          <option value="">Sin agente</option>
+                          {team.filter((a) => a.doesVisits || a.id === v.agentId).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                        </select>
+                        <button className="btn-ghost !px-2 !py-1 text-xs" title="Cambiar quién hace la visita">Cambiar</button>
+                      </form>
+                    )}
                     <form action={confirmVisitAction}>
                       <input type="hidden" name="id" value={v.id} /><input type="hidden" name="status" value="confirmada" />
                       <button className="btn !px-3 !py-1.5 text-xs" title="Confirma la visita y avisa al cliente">Confirmar</button>

@@ -197,11 +197,25 @@ export async function saveAgentAction(_: FormState, form: FormData): Promise<For
     maxPrice: form.has("maxPrice") ? Number(String(form.get("maxPrice")).replace(/[^\d]/g, "")) || null : undefined,
     doesVisits: form.has("langsSent") ? form.get("doesVisits") === "on" : undefined,
     backup: form.has("langsSent") ? form.get("backup") === "on" : undefined,
+    backupRank: form.has("backupRank") ? Math.max(1, Number(form.get("backupRank")) || 1) : undefined,
   };
   if (id) await db.update(agents).set(values).where(and(eq(agents.id, id), eq(agents.agencyId, agency.id)));
   else await db.insert(agents).values({ ...values, agencyId: agency.id });
   revalidatePath("/app/settings");
   return { ok: id ? `${name} actualizado` : `${name} añadido` };
+}
+
+/** Cambia quién hace una visita (p. ej. Anders cuando el agente no puede ir). */
+export async function setVisitAgentAction(form: FormData) {
+  const { agency } = await requireUser();
+  const db = await getDb();
+  const agentId = String(form.get("agentId") ?? "") || null;
+  const [v] = await db.update(visits).set({ agentId })
+    .where(and(eq(visits.id, String(form.get("id"))), eq(visits.agencyId, agency.id))).returning();
+  if (v) {
+    await db.update(leads).set({ agentId, updatedAt: new Date() }).where(and(eq(leads.id, v.leadId), eq(leads.agencyId, agency.id)));
+    revalidatePath(`/app/leads/${v.leadId}`);
+  }
 }
 
 export async function setPropertyAgentAction(form: FormData) {

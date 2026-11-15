@@ -207,6 +207,7 @@ export const agents = pgTable("agents", {
   maxPrice: integer("max_price"), // solo visita inmuebles hasta este precio (null = sin límite)
   doesVisits: boolean("does_visits").notNull().default(true),
   backup: boolean("backup").notNull().default(false), // suplente cuando el agente del inmueble no puede
+  backupRank: integer("backup_rank").notNull().default(1), // 1 = primer suplente, 2 = último recurso...
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

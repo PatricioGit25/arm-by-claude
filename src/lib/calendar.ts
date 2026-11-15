@@ -233,7 +233,7 @@ export async function visitAgentsFor(
   if (!team.length) return [];
   const byId = new Map(team.map((a) => [a.id, a]));
   const order = [prop?.agentId, prop?.extraAgentId].map((id) => (id ? byId.get(id) : undefined)).filter((a): a is Agent => !!a);
-  for (const a of team.filter((t) => t.backup).sort((x, y) => x.createdAt.getTime() - y.createdAt.getTime())) order.push(a);
+  for (const a of team.filter((t) => t.backup).sort((x, y) => x.backupRank - y.backupRank || x.createdAt.getTime() - y.createdAt.getTime())) order.push(a);
   const seen = new Set<string>();
   const ok = (a: Agent) =>
     a.doesVisits &&

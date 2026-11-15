@@ -82,7 +82,11 @@ export async function importCatalog(agency: Agency, raw: string) {
     }
     if (s.precio_max !== undefined) set.maxPrice = int(s.precio_max) || null;
     if (s.hace_visitas !== undefined) set.doesVisits = s.hace_visitas !== false && !/^(no|false|0)$/i.test(str(s.hace_visitas));
-    if (s.suplente !== undefined) set.backup = s.suplente === true || /^(si|sí|true|1)$/i.test(str(s.suplente));
+    if (s.suplente !== undefined) {
+      const rank = typeof s.suplente === "number" ? s.suplente : int(s.suplente);
+      set.backup = s.suplente === true || rank > 0 || /^(si|sí|true)$/i.test(str(s.suplente));
+      if (rank > 0) set.backupRank = rank;
+    }
     if (Object.keys(set).length) await db.update(agents).set(set).where(eq(agents.id, a.id));
   }
   for (const r of rows) {
