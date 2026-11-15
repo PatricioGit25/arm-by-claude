@@ -1,12 +1,12 @@
 import { desc, eq } from "drizzle-orm";
 import { requireUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
-import { properties } from "@/lib/db/schema";
+import { agents, properties } from "@/lib/db/schema";
 import { formatPrice } from "@/lib/scoring";
 import Link from "next/link";
 import { ActionForm } from "@/components/ActionForm";
 import { DictationTextarea } from "@/components/DictationTextarea";
-import { addPropertyVoiceAction, createPropertyAction, setPropertyStatusAction, syncFeedAction, updatePropertyAction } from "@/app/actions";
+import { addPropertyVoiceAction, createPropertyAction, importCatalogAction, setPropertyAgentAction, setPropertyStatusAction, syncFeedAction, updatePropertyAction } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +15,7 @@ export default async function PropertiesPage() {
   const db = await getDb();
   const list = await db.select().from(properties).where(eq(properties.agencyId, agency.id)).orderBy(desc(properties.createdAt));
   const vacation = agency.vertical === "vacacional";
+  const team = await db.select().from(agents).where(eq(agents.agencyId, agency.id));
 
   return (
     <div className="space-y-6">
@@ -36,11 +37,20 @@ export default async function PropertiesPage() {
             <div className="mt-3"><ActionForm action={syncFeedAction} submit="Sincronizar ahora">{null}</ActionForm></div>
           </>
         ) : (
+          <>
           <p className="mt-1 text-sm text-mute">
             ¿Usas Inmovilla, Witei, Mobilia u otro CRM? Pega el enlace del feed XML que usáis para Kyero u otros portales en{" "}
             <Link href="/app/settings" className="text-arm underline">Ajustes</Link> y tus propiedades se cargarán solas, sin escribir nada.
           </p>
+          </>
         )}
+        <details className="mt-4 border-t border-line pt-3">
+          <summary className="cursor-pointer text-sm font-medium">Importar catálogo (archivo JSON o CSV)</summary>
+          <p className="mt-1 text-xs text-mute">Columnas: ref, titulo, tipo, precio, dormitorios, banos, m2, pueblo, zona, gastos, ibi, licencia_turistica, agente, agente_tel, enlace, imagen, caracteristicas, descripcion. Los agentes se crean solos.</p>
+          <ActionForm action={importCatalogAction} submit="Importar" className="mt-2 space-y-2">
+            <input type="file" name="file" accept=".json,.csv,application/json,text/csv" className="block w-full text-sm text-mute file:mr-3 file:rounded-full file:border-0 file:bg-panel2 file:px-3 file:py-1.5 file:text-fg" />
+          </ActionForm>
+        </details>
       </section>
     </div>
     <div className="grid gap-6 lg:grid-cols-3">
@@ -57,6 +67,9 @@ export default async function PropertiesPage() {
                 <p className="text-sm text-mute">{vacation
                   ? `${p.type} · hasta ${p.maxGuests} pers. · ${p.areaM2} m² · ${p.town}${p.zone ? ` (${p.zone})` : ""}${p.bookingUrl ? "" : " · sin enlace de reserva"}`
                   : `${p.type} · ${p.bedrooms} dorm · ${p.areaM2} m² · ${p.town}${p.zone ? ` (${p.zone})` : ""}`}</p>
+                {!vacation && (p.communityFees || p.touristLicense || p.bookingUrl) && (
+                  <p className="mt-1 text-xs text-mute">{[p.communityFees && `Gastos: ${p.communityFees}`, p.touristLicense && `Licencia: ${p.touristLicense}`].filter(Boolean).join(" · ")}{p.bookingUrl && <> · <a href={p.bookingUrl} target="_blank" rel="noopener" className="text-arm underline">anuncio</a></>}</p>
+                )}
                 <p className="mt-1 flex flex-wrap gap-2 text-[11px] text-mute">
                   {p.origin !== "manual" && <span className="chip">{p.origin === "feed" ? "Desde tu CRM" : "Dictada"}</span>}
                   {p.ownerContact && <span className="chip">🔒 Propietario: {p.ownerContact}</span>}
@@ -78,6 +91,16 @@ export default async function PropertiesPage() {
               </div>
               <div className="flex items-center gap-3">
                 {!vacation && <span className={`font-bold ${p.price ? "text-arm" : "text-hot"}`}>{p.price ? formatPrice(p.price) : "Sin precio"}</span>}
+                {team.length > 0 && (
+                  <form action={setPropertyAgentAction} className="flex gap-1">
+                    <input type="hidden" name="id" value={p.id} />
+                    <select name="agentId" defaultValue={p.agentId ?? ""} className="input !w-auto !py-1 text-xs" aria-label="Agente">
+                      <option value="">Sin agente</option>
+                      {team.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
+                    <button className="btn-ghost !px-2 !py-1 text-xs">OK</button>
+                  </form>
+                )}
                 <form action={setPropertyStatusAction} className="flex gap-1">
                   <input type="hidden" name="id" value={p.id} />
                   <select name="status" defaultValue={p.status} className="input !w-auto !py-1 text-xs">

@@ -86,6 +86,7 @@ export const agencies = pgTable("agencies", {
   workHours: text("work_hours").notNull().default("10:00-14:00,16:30-19:30"),
   visitMinutes: integer("visit_minutes").notNull().default(45),
   timezone: text("timezone").notNull().default("Europe/Madrid"),
+  ownerApproval: boolean("owner_approval").notNull().default(false), // las visitas requieren el OK del propietario
   inboundToken: text("inbound_token").notNull().default(sql`md5(random()::text || clock_timestamp()::text)`), // buzón de emails de portales
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -124,7 +125,11 @@ export const properties = pgTable("properties", {
   externalId: text("external_id"), // id en el CRM (feed)
   ownerContact: text("owner_contact"), // privado: propietario
   imageUrl: text("image_url"),
-  origin: text("origin").notNull().default("manual"), // manual | feed | voz
+  origin: text("origin").notNull().default("manual"), // manual | feed | voz | import
+  agentId: uuid("agent_id"), // agente que lleva el inmueble
+  communityFees: text("community_fees"), // "120 €/mes"
+  ibi: text("ibi"), // "450 €/año"
+  touristLicense: text("tourist_license"), // "Sí (VFT/MA/12345)" | "No"
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -152,6 +157,7 @@ export const leads = pgTable("leads", {
   handedOffAt: timestamp("handed_off_at", { withTimezone: true }),
   lostReason: text("lost_reason"),
   guestPropertyId: uuid("guest_property_id"), // huésped confirmado de esta propiedad
+  agentId: uuid("agent_id"), // agente responsable (el del inmueble que le interesa)
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -181,9 +187,21 @@ export const visits = pgTable("visits", {
   leadId: uuid("lead_id").notNull(),
   propertyId: uuid("property_id"),
   preferredTime: text("preferred_time").notNull(),
+  agentId: uuid("agent_id"),
   scheduledAt: timestamp("scheduled_at", { withTimezone: true }),
   endsAt: timestamp("ends_at", { withTimezone: true }),
   status: text("status").notNull().default("pendiente"), // pendiente | confirmada | hecha | cancelada
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Agentes de la agencia (no necesitan cuenta en el ARM). */
+export const agents = pgTable("agents", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  agencyId: uuid("agency_id").notNull(),
+  name: text("name").notNull(),
+  phone: text("phone"),
+  email: text("email"),
+  calendarIcsUrl: text("calendar_ics_url"), // calendario publicado (Outlook/Google), solo lectura
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -203,3 +221,4 @@ export type User = typeof users.$inferSelect;
 export type Property = typeof properties.$inferSelect;
 export type Lead = typeof leads.$inferSelect;
 export type Message = typeof messages.$inferSelect;
+export type Agent = typeof agents.$inferSelect;

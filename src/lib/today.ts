@@ -30,7 +30,7 @@ export async function buildToday(agency: Agency, now = new Date()) {
   const dayEnd = new Date(dayStart.getTime() + DAY);
   const [allLeads, allVisits, props, agentMsgs] = await Promise.all([
     db.select().from(leads).where(eq(leads.agencyId, agency.id)),
-    db.select().from(visits).where(and(eq(visits.agencyId, agency.id), inArray(visits.status, ["pendiente", "agendada", "confirmada"]))),
+    db.select().from(visits).where(and(eq(visits.agencyId, agency.id), inArray(visits.status, ["pendiente", "agendada", "por_confirmar", "confirmada"]))),
     db.select().from(properties).where(eq(properties.agencyId, agency.id)),
     db.select({ leadId: messages.leadId, createdAt: messages.createdAt }).from(messages)
       .where(and(eq(messages.agencyId, agency.id), eq(messages.author, "agent"), gte(messages.createdAt, new Date(now.getTime() - 14 * DAY))))
@@ -52,6 +52,9 @@ export async function buildToday(agency: Agency, now = new Date()) {
     const what = sales ? "demo" : "visita";
     if (v.scheduledAt && v.scheduledAt >= dayStart && v.scheduledAt < dayEnd) {
       items.push({ kind: "visit", priority: 1, time: time(v.scheduledAt), title: `${sales ? "Demo" : "Visita"} con ${lead.name ?? "cliente"}`, detail: where, href: `/app/leads/${lead.id}`, phone: lead.phone });
+    } else if (v.status === "por_confirmar") {
+      const when = v.scheduledAt ? v.scheduledAt.toLocaleString("es-ES", { timeZone: tz, weekday: "long", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "sin hora";
+      items.push({ kind: "confirm", priority: 1, title: `Pedir permiso al propietario: ${prop?.title ?? "visita"}`, detail: `${lead.name ?? "Cliente"} · ${when}`, href: `/app/leads/${lead.id}`, phone: lead.phone });
     } else if (v.status === "agendada" || v.status === "pendiente") {
       const when = v.scheduledAt ? v.scheduledAt.toLocaleString("es-ES", { timeZone: tz, weekday: "long", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "sin hora";
       items.push({ kind: "confirm", priority: 3, title: `Confirmar ${what} de ${lead.name ?? "cliente"}`, detail: `${when} · ${where}`, href: `/app/leads/${lead.id}`, phone: lead.phone });

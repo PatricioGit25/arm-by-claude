@@ -5,7 +5,9 @@ import { and, eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
-import { agencies, leads, properties, users, visits, STAGES, type Stage, type Vertical } from "@/lib/db/schema";
+import { agencies, agents, leads, properties, users, visits, STAGES, type Stage, type Vertical } from "@/lib/db/schema";
+import { formatSlot } from "@/lib/calendar";
+import { importCatalog } from "@/lib/catalog-import";
 import { createSession, destroySession, requireUser } from "@/lib/auth";
 import { logEvent, matchNewProperty, sendOutbound } from "@/lib/engine";
 import { ingestNote, ingestPortalEmail } from "@/lib/intake";
@@ -153,9 +155,71 @@ export async function markGuestAction(form: FormData) {
 export async function confirmVisitAction(form: FormData) {
   const { agency } = await requireUser();
   const db = await getDb();
-  await db.update(visits).set({ status: String(form.get("status")) })
-    .where(and(eq(visits.id, String(form.get("id"))), eq(visits.agencyId, agency.id)));
-  revalidatePath(`/app/leads/${String(form.get("leadId"))}`);
+  const status = String(form.get("status"));
+  if (!["confirmada", "cancelada", "hecha"].includes(status)) return;
+  const visit = (await db.select().from(visits).where(and(eq(visits.id, String(form.get("id"))), eq(visits.agencyId, agency.id))))[0];
+  if (!visit) return;
+  await db.update(visits).set({ status }).where(eq(visits.id, visit.id));
+  const lead = (await db.select().from(leads).where(eq(leads.id, visit.leadId)))[0];
+  const prop = visit.propertyId ? (await db.select().from(properties).where(eq(properties.id, visit.propertyId)))[0] : undefined;
+  const agent = visit.agentId ? (await db.select().from(agents).where(eq(agents.id, visit.agentId)))[0] : undefined;
+  if (lead && (status === "confirmada" || status === "cancelada") && form.get("notify") !== "0") {
+    const when = visit.scheduledAt ? formatSlot(visit.scheduledAt, agency.timezone, lead.language) : visit.preferredTime;
+    const first = lead.name ? ` ${lead.name.split(" ")[0]}` : "";
+    const what = prop ? `${prop.title}${prop.bookingUrl ? ` (${prop.bookingUrl})` : ""}` : "";
+    const M: Record<string, [string, string]> = {
+      es: [`¡Hola${first}! Visita confirmada ✅ ${when}${what ? ` · ${what}` : ""}.${agent ? ` Te acompañará ${agent.name}${agent.phone ? ` (${agent.phone})` : ""}.` : ""} ¡Hasta entonces!`,
+        `Hola${first}, lo siento: el propietario no puede ese día${what ? ` para ${prop!.title}` : ""}. ¿Te propongo otro día y hora?`],
+      en: [`Hi${first}! Viewing confirmed ✅ ${when}${what ? ` · ${what}` : ""}.${agent ? ` ${agent.name}${agent.phone ? ` (${agent.phone})` : ""} will show you around.` : ""} See you then!`,
+        `Hi${first}, sorry: the owner isn't available that day${what ? ` for ${prop!.title}` : ""}. Shall I suggest another day and time?`],
+      sv: [`Hej${first}! Visningen är bekräftad ✅ ${when}${what ? ` · ${what}` : ""}.${agent ? ` ${agent.name}${agent.phone ? ` (${agent.phone})` : ""} visar dig runt.` : ""} Vi ses!`,
+        `Hej${first}, tyvärr kan ägaren inte den dagen${what ? ` för ${prop!.title}` : ""}. Ska jag föreslå en annan dag och tid?`],
+    };
+    const [ok, ko] = M[lead.language] ?? M.en;
+    await sendOutbound(agency, lead, status === "confirmada" ? ok : ko, "agent");
+    await db.update(leads).set({ stage: status === "confirmada" ? "visita" : "calificando", updatedAt: new Date() }).where(eq(leads.id, lead.id));
+    await logEvent(agency.id, lead.id, status === "confirmada" ? "visit_confirmed" : "visit_cancelled", { ref: prop?.ref });
+  }
+  revalidatePath(`/app/leads/${visit.leadId}`);
+  revalidatePath("/app/hoy");
+}
+
+export async function saveAgentAction(_: FormState, form: FormData): Promise<FormState> {
+  const { agency } = await requireUser();
+  const db = await getDb();
+  const id = String(form.get("id") ?? "");
+  const name = String(form.get("name") ?? "").trim();
+  if (!name) return { error: "El nombre del agente es obligatorio" };
+  const values = {
+    name, phone: String(form.get("phone") ?? "").trim() || null, email: String(form.get("email") ?? "").trim() || null,
+    calendarIcsUrl: String(form.get("calendarIcsUrl") ?? "").trim() || null,
+  };
+  if (id) await db.update(agents).set(values).where(and(eq(agents.id, id), eq(agents.agencyId, agency.id)));
+  else await db.insert(agents).values({ ...values, agencyId: agency.id });
+  revalidatePath("/app/settings");
+  return { ok: id ? `${name} actualizado` : `${name} añadido` };
+}
+
+export async function setPropertyAgentAction(form: FormData) {
+  const { agency } = await requireUser();
+  const db = await getDb();
+  await db.update(properties).set({ agentId: String(form.get("agentId") ?? "") || null })
+    .where(and(eq(properties.id, String(form.get("id"))), eq(properties.agencyId, agency.id)));
+  revalidatePath("/app/properties");
+}
+
+export async function importCatalogAction(_: FormState, form: FormData): Promise<FormState> {
+  const { agency } = await requireUser();
+  const file = form.get("file");
+  const raw = file instanceof File && file.size ? await file.text() : String(form.get("data") ?? "");
+  if (!raw.trim()) return { error: "Sube el archivo o pega el contenido" };
+  try {
+    const r = await importCatalog(agency, raw);
+    revalidatePath("/app/properties");
+    return { ok: `Importado: ${r.created} nuevos, ${r.updated} actualizados${r.agents ? `, ${r.agents} agentes creados` : ""}.` };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "No se pudo importar" };
+  }
 }
 
 export async function updateSettingsAction(_: FormState, form: FormData): Promise<FormState> {
@@ -177,6 +241,7 @@ export async function updateSettingsAction(_: FormState, form: FormData): Promis
     workHours: /^\s*\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}(\s*,\s*\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2})*\s*$/.test(String(form.get("workHours") ?? "")) ? String(form.get("workHours")).trim() : agency.workHours,
     visitMinutes: Math.max(15, Math.min(240, Number(form.get("visitMinutes")) || agency.visitMinutes)),
     feedUrl: String(form.get("feedUrl") ?? "").trim() || null,
+    ownerApproval: form.get("ownerApproval") === "on",
   }).where(eq(agencies.id, agency.id));
   revalidatePath("/app", "layout");
   const newFeed = String(form.get("feedUrl") ?? "").trim();

@@ -7,7 +7,7 @@
  */
 import { and, eq, gte, inArray, lte } from "drizzle-orm";
 import { getDb } from "./db";
-import { leads, properties, visits, type Agency, type Lang } from "./db/schema";
+import { agents, leads, properties, visits, type Agency, type Agent, type Lang } from "./db/schema";
 
 // ---------- zona horaria ----------
 function offsetMinutes(date: Date, tz: string): number {
@@ -97,8 +97,8 @@ export function parseIcs(ics: string, tz: string): BusyRange[] {
 
 const icsCache = new Map<string, { at: number; busy: BusyRange[] }>();
 
-async function externalBusy(agency: Agency): Promise<BusyRange[]> {
-  const url = agency.calendarIcsUrl?.trim().replace(/^webcal:/i, "https:");
+async function externalBusy(agency: Agency, agent?: Agent | null): Promise<BusyRange[]> {
+  const url = (agent?.calendarIcsUrl || agency.calendarIcsUrl)?.trim().replace(/^webcal:/i, "https:");
   if (!url) return [];
   const hit = icsCache.get(url);
   if (hit && Date.now() - hit.at < 5 * 60000) return hit.busy;
@@ -114,10 +114,11 @@ async function externalBusy(agency: Agency): Promise<BusyRange[]> {
   }
 }
 
-async function armBusy(agency: Agency, from: Date, to: Date): Promise<BusyRange[]> {
+async function armBusy(agency: Agency, from: Date, to: Date, agent?: Agent | null): Promise<BusyRange[]> {
   const db = await getDb();
   const rows = await db.select().from(visits).where(and(
-    eq(visits.agencyId, agency.id), inArray(visits.status, ["agendada", "confirmada"]),
+    eq(visits.agencyId, agency.id), inArray(visits.status, ["agendada", "por_confirmar", "confirmada"]),
+    ...(agent ? [eq(visits.agentId, agent.id)] : []),
     gte(visits.scheduledAt, new Date(from.getTime() - 86400000)), lte(visits.scheduledAt, to),
   ));
   return rows.filter((v) => v.scheduledAt).map((v) => ({ start: v.scheduledAt!, end: v.endsAt ?? new Date(v.scheduledAt!.getTime() + agency.visitMinutes * 60000) }));
@@ -131,14 +132,14 @@ function parseHours(s: string): [number, number][] {
     .map((m) => [+m![1] * 60 + +m![2], +m![3] * 60 + +m![4]] as [number, number]);
 }
 
-export async function availableSlots(agency: Agency, opts: { from?: Date; days?: number; max?: number; partOfDay?: "morning" | "afternoon" } = {}): Promise<Slot[]> {
+export async function availableSlots(agency: Agency, opts: { from?: Date; days?: number; max?: number; partOfDay?: "morning" | "afternoon"; agent?: Agent | null } = {}): Promise<Slot[]> {
   const tz = agency.timezone;
   const now = new Date();
   const earliest = new Date(Math.max((opts.from ?? now).getTime(), now.getTime() + 2 * 3600000));
   const days = opts.days ?? 7;
   const max = opts.max ?? 6;
   const until = new Date(earliest.getTime() + days * 86400000);
-  const busy = [...(await externalBusy(agency)), ...(await armBusy(agency, earliest, until))];
+  const busy = [...(await externalBusy(agency, opts.agent)), ...(await armBusy(agency, earliest, until, opts.agent))];
   const workDays = new Set(agency.workDays.split(",").map((d) => +d.trim()));
   const ranges = parseHours(agency.workHours);
   const len = agency.visitMinutes * 60000;
@@ -169,9 +170,9 @@ export async function availableSlots(agency: Agency, opts: { from?: Date; days?:
   return out;
 }
 
-export async function isFree(agency: Agency, start: Date): Promise<boolean> {
+export async function isFree(agency: Agency, start: Date, agent?: Agent | null): Promise<boolean> {
   const end = new Date(start.getTime() + agency.visitMinutes * 60000);
-  const busy = [...(await externalBusy(agency)), ...(await armBusy(agency, new Date(start.getTime() - 86400000), end))];
+  const busy = [...(await externalBusy(agency, agent)), ...(await armBusy(agency, new Date(start.getTime() - 86400000), end, agent))];
   return !busy.some((r) => start < r.end && end > r.start);
 }
 
@@ -181,7 +182,8 @@ const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace
 
 export async function exportIcs(agency: Agency): Promise<string> {
   const db = await getDb();
-  const rows = await db.select().from(visits).where(and(eq(visits.agencyId, agency.id), inArray(visits.status, ["agendada", "confirmada", "hecha"])));
+  const rows = await db.select().from(visits).where(and(eq(visits.agencyId, agency.id), inArray(visits.status, ["agendada", "por_confirmar", "confirmada", "hecha"])));
+  const team = await db.select().from(agents).where(eq(agents.agencyId, agency.id));
   const leadIds = [...new Set(rows.map((v) => v.leadId))];
   const propIds = [...new Set(rows.map((v) => v.propertyId).filter(Boolean))] as string[];
   const ls = leadIds.length ? await db.select().from(leads).where(inArray(leads.id, leadIds)) : [];
@@ -198,7 +200,7 @@ export async function exportIcs(agency: Agency): Promise<string> {
       `DTSTAMP:${icsDate(v.createdAt)}`,
       `DTSTART:${icsDate(v.scheduledAt)}`,
       `DTEND:${icsDate(end)}`,
-      `SUMMARY:${esc(`Visita${v.status === "agendada" ? " (por confirmar)" : ""}: ${lead?.name ?? "Cliente"}${prop ? ` · ${prop.title}` : ""}`)}`,
+      `SUMMARY:${esc(`Visita${v.status === "agendada" || v.status === "por_confirmar" ? " (por confirmar)" : ""}: ${lead?.name ?? "Cliente"}${prop ? ` · ${prop.title}` : ""}${team.find((t) => t.id === v.agentId) ? ` · ${team.find((t) => t.id === v.agentId)!.name}` : ""}`)}`,
       `DESCRIPTION:${esc([lead?.phone && `Teléfono: ${lead.phone}`, lead?.summary, prop && `${prop.ref} · ${prop.title}`].filter(Boolean).join("\n"))}`,
       ...(prop ? [`LOCATION:${esc(`${prop.zone ? `${prop.zone}, ` : ""}${prop.town}`)}`] : []),
       "END:VEVENT",
@@ -206,4 +208,11 @@ export async function exportIcs(agency: Agency): Promise<string> {
   }
   lines.push("END:VCALENDAR");
   return lines.join("\r\n");
+}
+
+/** Agente responsable de un inmueble (si la agencia trabaja con agentes). */
+export async function agentForProperty(agencyId: string, agentId?: string | null): Promise<Agent | null> {
+  if (!agentId) return null;
+  const db = await getDb();
+  return (await db.select().from(agents).where(and(eq(agents.agencyId, agencyId), eq(agents.id, agentId))))[0] ?? null;
 }

@@ -108,6 +108,20 @@ ALTER TABLE properties ADD COLUMN IF NOT EXISTS booking_url text;
 ALTER TABLE properties ADD COLUMN IF NOT EXISTS guest_info text NOT NULL DEFAULT '';
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS guest_property_id uuid;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS env_password_sha text;
+CREATE TABLE IF NOT EXISTS agents (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  agency_id uuid NOT NULL REFERENCES agencies(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  phone text, email text, calendar_ics_url text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE agencies ADD COLUMN IF NOT EXISTS owner_approval boolean NOT NULL DEFAULT false;
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS agent_id uuid;
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS community_fees text;
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS ibi text;
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS tourist_license text;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS agent_id uuid;
+ALTER TABLE visits ADD COLUMN IF NOT EXISTS agent_id uuid;
 ALTER TABLE agencies ADD COLUMN IF NOT EXISTS feed_url text;
 ALTER TABLE agencies ADD COLUMN IF NOT EXISTS feed_synced_at timestamptz;
 ALTER TABLE agencies ADD COLUMN IF NOT EXISTS feed_status text;

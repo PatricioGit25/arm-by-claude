@@ -12,7 +12,7 @@ export interface TurnState {
   profilePatch: Partial<LeadProfile>;
   contactPatch: ContactPatch;
   handoff?: { reason: string; summary: string };
-  visit?: { propertyRef?: string; preferredTime: string; startsAt?: string };
+  visit?: { propertyRef?: string; preferredTime: string; startsAt?: string; agentId?: string };
   incident?: { propertyRef?: string; description: string; urgent: boolean };
   shownRefs: string[];
 }

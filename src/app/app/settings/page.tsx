@@ -2,9 +2,9 @@ import { eq } from "drizzle-orm";
 import { headers } from "next/headers";
 import { requireUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
-import { users } from "@/lib/db/schema";
+import { agents, users } from "@/lib/db/schema";
 import { ActionForm } from "@/components/ActionForm";
-import { addAgentUserAction, changePasswordAction, updateSettingsAction } from "@/app/actions";
+import { addAgentUserAction, changePasswordAction, saveAgentAction, updateSettingsAction } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +12,7 @@ export default async function SettingsPage() {
   const { agency } = await requireUser();
   const db = await getDb();
   const team = await db.select().from(users).where(eq(users.agencyId, agency.id));
+  const listingAgents = await db.select().from(agents).where(eq(agents.agencyId, agency.id));
   const h = await headers();
   const base = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host")}`;
   const days = new Set(agency.workDays.split(","));
@@ -56,8 +57,14 @@ export default async function SettingsPage() {
               <div>
                 <label className="label" htmlFor="calendarIcsUrl">Tu calendario: dirección secreta en formato iCal</label>
                 <input id="calendarIcsUrl" name="calendarIcsUrl" className="input" defaultValue={agency.calendarIcsUrl ?? ""} placeholder="https://calendar.google.com/calendar/ical/…/private-…/basic.ics" />
-                <p className="mt-1 text-xs text-mute">Google Calendar → ⚙️ Configuración → tu calendario → “Dirección secreta en formato iCal”. Así la IA no propone horas en las que ya estás ocupado.</p>
+                <p className="mt-1 text-xs text-mute">Google Calendar → ⚙️ Configuración → tu calendario → “Dirección secreta en formato iCal”. Así la IA no propone horas en las que ya estás ocupado. Si cada agente tiene su calendario, ponlo abajo en “Agentes”.</p>
               </div>
+              {agency.vertical === "venta" && (
+                <label className="flex items-start gap-2 text-sm">
+                  <input type="checkbox" name="ownerApproval" defaultChecked={agency.ownerApproval} className="mt-1" />
+                  <span>Las visitas necesitan el permiso del propietario<br /><span className="text-xs text-mute">La IA reserva el hueco y te avisa; al confirmarlo en la ficha, el cliente recibe la confirmación.</span></span>
+                </label>
+              )}
             </fieldset>
           )}
           <div>
@@ -93,6 +100,39 @@ export default async function SettingsPage() {
             <input name="password" type="password" className="input" placeholder="Contraseña inicial (8+)" />
           </ActionForm>
         </section>
+        {agency.vertical === "venta" && (
+          <section className="card">
+            <h2 className="font-semibold">Agentes</h2>
+            <p className="mb-3 mt-0.5 text-xs text-mute">Cada inmueble tiene su agente. Los clientes y las visitas se asignan solos al agente del inmueble, usando su calendario. Outlook: Configuración → Calendario → Calendarios compartidos → Publicar un calendario → enlace ICS.</p>
+            <div className="space-y-3">
+              {listingAgents.map((a) => (
+                <details key={a.id} className="rounded-xl border border-line p-3">
+                  <summary className="cursor-pointer text-sm font-medium">{a.name} <span className="font-normal text-mute">· {a.calendarIcsUrl ? "📅 calendario conectado" : "sin calendario"}</span></summary>
+                  <ActionForm action={saveAgentAction} submit="Guardar" className="mt-3 space-y-2">
+                    <input type="hidden" name="id" value={a.id} />
+                    <input name="name" defaultValue={a.name} className="input" aria-label="Nombre" />
+                    <div className="grid grid-cols-2 gap-2">
+                      <input name="phone" defaultValue={a.phone ?? ""} className="input" placeholder="Teléfono (WhatsApp)" aria-label="Teléfono" />
+                      <input name="email" defaultValue={a.email ?? ""} className="input" placeholder="Email" aria-label="Email" />
+                    </div>
+                    <input name="calendarIcsUrl" defaultValue={a.calendarIcsUrl ?? ""} className="input" placeholder="Enlace ICS de su calendario (Outlook o Google)" aria-label="Calendario" />
+                  </ActionForm>
+                </details>
+              ))}
+              <details className="rounded-xl border border-dashed border-line p-3">
+                <summary className="cursor-pointer text-sm font-medium text-arm">+ Añadir agente</summary>
+                <ActionForm action={saveAgentAction} submit="Añadir" className="mt-3 space-y-2">
+                  <input name="name" className="input" placeholder="Nombre" aria-label="Nombre" />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input name="phone" className="input" placeholder="Teléfono (WhatsApp)" aria-label="Teléfono" />
+                    <input name="email" className="input" placeholder="Email" aria-label="Email" />
+                  </div>
+                  <input name="calendarIcsUrl" className="input" placeholder="Enlace ICS de su calendario" aria-label="Calendario" />
+                </ActionForm>
+              </details>
+            </div>
+          </section>
+        )}
         <section className="card">
           <h2 className="mb-2 font-semibold">Tu contraseña</h2>
           <ActionForm action={changePasswordAction} submit="Cambiar contraseña" className="space-y-2">

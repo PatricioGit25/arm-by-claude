@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { requireUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
-import { events, leads, messages, properties, visits, type Stage } from "@/lib/db/schema";
+import { agents, events, leads, messages, properties, visits, type Stage } from "@/lib/db/schema";
+import { CopyBlock } from "@/components/CopyBlock";
 import { formatPrice, propertyMatches, scoreLead, stageLabel, stagesFor } from "@/lib/scoring";
 import { LANG_FLAG, LANG_LABEL } from "@/lib/i18n";
 import { ScoreBar, StageBadge } from "@/components/StageBadge";
@@ -28,11 +29,12 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
   const lead = (await db.select().from(leads).where(and(eq(leads.id, id), eq(leads.agencyId, agency.id))))[0];
   if (!lead) notFound();
 
-  const [msgs, evs, vis, catalog] = await Promise.all([
+  const [msgs, evs, vis, catalog, team] = await Promise.all([
     db.select().from(messages).where(eq(messages.leadId, id)).orderBy(asc(messages.createdAt)),
     db.select().from(events).where(eq(events.leadId, id)).orderBy(desc(events.createdAt)).limit(30),
     db.select().from(visits).where(eq(visits.leadId, id)).orderBy(desc(visits.createdAt)),
     db.select().from(properties).where(eq(properties.agencyId, agency.id)),
+    db.select().from(agents).where(eq(agents.agencyId, agency.id)),
   ]);
   const p = lead.profile;
   const vertical = agency.vertical;
@@ -41,6 +43,29 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
   const matches = catalog.filter((x) => propertyMatches(x, p, vertical)).slice(0, 4);
   const guestOf = catalog.find((c) => c.id === lead.guestPropertyId);
   const interest = catalog.find((c) => c.ref === p.property_ref);
+  const owner = team.find((a) => a.id === (lead.agentId ?? interest?.agentId));
+  const tz = agency.timezone;
+  const fmt = (d: Date) => d.toLocaleString("es-ES", { timeZone: tz, weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+  const clientMsgs = msgs.filter((m) => m.direction === "in" && m.author === "lead" && m.body.trim().length > 3).map((m) => `- ${m.body.replace(/^\[[^\]]+\]\s*/, "")}`);
+  const nextVisit = vis.find((v) => v.scheduledAt && ["por_confirmar", "agendada", "confirmada"].includes(v.status));
+  const vitecText = [
+    `Nombre: ${lead.name ?? ""}`, `Teléfono: ${lead.phone ?? ""}`, `Email: ${lead.email ?? ""}`,
+    `Idioma: ${LANG_LABEL[lead.language]}`, `Origen: ${lead.source ?? lead.channel}`,
+    interest && `Inmueble: ${interest.ref} · ${interest.title}`,
+    nextVisit?.scheduledAt && `Visita: ${fmt(nextVisit.scheduledAt)}${owner ? ` con ${owner.name}` : ""}`,
+    p.notes && `Pendiente de responder: ${p.notes}`,
+    clientMsgs.length ? `Mensajes del cliente:\n${clientMsgs.join("\n")}` : null,
+  ].filter(Boolean).join("\n");
+  const briefing = [
+    `Ficha de visita · ${agency.name}`,
+    `${lead.name ?? "Cliente"}${lead.phone ? ` · ${lead.phone}` : ""} · ${LANG_LABEL[lead.language]}`,
+    interest && `Inmueble: ${interest.ref} · ${interest.title}`,
+    nextVisit?.scheduledAt && `Visita: ${fmt(nextVisit.scheduledAt)}`,
+    lead.summary && `Resumen: ${lead.summary}`,
+    p.notes && `Quiere saber: ${p.notes}`,
+    clientMsgs.length ? `Lo que escribió:\n${clientMsgs.slice(-4).join("\n")}` : null,
+  ].filter(Boolean).join("\n");
+  const agentWa = owner?.phone?.replace(/\D/g, "");
   // Clientes que no escriben por un canal automático: el agente envía el mensaje desde su WhatsApp.
   const manualChannel = lead.channel === "portal" || lead.channel === "manual";
   const draft = [...msgs].reverse().find((m) => m.author === "ai")?.body;
@@ -70,6 +95,7 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
           )}
           <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
             <Field k="Teléfono" v={lead.phone} /><Field k="Email" v={lead.email} />
+            {team.length > 0 && <><Field k="Agente" v={owner?.name} /><Field k="Inmueble" v={interest ? `${interest.ref}` : undefined} /></>}
             {vertical === "comercial" ? (
               <>
                 <Field k="Agencia" v={p.company} /><Field k="Zona" v={p.zones?.join(", ")} />
@@ -135,16 +161,41 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
               <div key={v.id} className="flex items-center justify-between gap-2 border-t border-line py-2 text-sm first:border-0">
                 <div>
                   <p>{vertical === "comercial" ? "Demo" : catalog.find((c) => c.id === v.propertyId)?.ref ?? "Propiedad por definir"} · {v.scheduledAt ? v.scheduledAt.toLocaleString("es-ES", { timeZone: agency.timezone, weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : v.preferredTime}</p>
-                  <p className="text-xs text-mute">{{ pendiente: "Sin hora: proponle una", agendada: "Agendada por la IA · por confirmar", confirmada: "Confirmada", hecha: "Hecha", cancelada: "Cancelada" }[v.status] ?? v.status}</p>
+                  <p className="text-xs text-mute">{{ pendiente: "Sin hora: proponle una", agendada: "Agendada por la IA · por confirmar", por_confirmar: "Pendiente del propietario", confirmada: "Confirmada · el cliente ya lo sabe", hecha: "Hecha", cancelada: "Cancelada" }[v.status] ?? v.status}{team.find((a) => a.id === v.agentId) ? ` · ${team.find((a) => a.id === v.agentId)!.name}` : ""}</p>
                 </div>
-                {(v.status === "pendiente" || v.status === "agendada") && (
-                  <form action={confirmVisitAction}>
-                    <input type="hidden" name="id" value={v.id} /><input type="hidden" name="leadId" value={lead.id} /><input type="hidden" name="status" value="confirmada" />
-                    <button className="btn">Confirmar</button>
-                  </form>
+                {["pendiente", "agendada", "por_confirmar"].includes(v.status) && (
+                  <div className="flex shrink-0 gap-1.5">
+                    <form action={confirmVisitAction}>
+                      <input type="hidden" name="id" value={v.id} /><input type="hidden" name="status" value="confirmada" />
+                      <button className="btn !px-3 !py-1.5 text-xs" title="Confirma la visita y avisa al cliente">Confirmar</button>
+                    </form>
+                    <form action={confirmVisitAction}>
+                      <input type="hidden" name="id" value={v.id} /><input type="hidden" name="status" value="cancelada" />
+                      <button className="btn-ghost !px-3 !py-1.5 text-xs" title="El propietario no puede: avisa al cliente y le propone otro día">No puede</button>
+                    </form>
+                  </div>
                 )}
               </div>
             ))}
+          </section>
+        )}
+
+        {vertical === "venta" && (
+          <section className="card space-y-4">
+            <div>
+              <h2 className="font-semibold">Pasar a Vitec</h2>
+              <p className="mb-2 mt-0.5 text-xs text-mute">Todo lo que hay que cargar, listo para copiar y pegar.</p>
+              <CopyBlock text={vitecText} label="Copiar para Vitec" />
+            </div>
+            {owner && (
+              <div className="border-t border-line pt-3">
+                <h3 className="text-sm font-semibold">Ficha para {owner.name}</h3>
+                <p className="mb-2 text-xs text-mute">Para que prepare la visita sabiendo con quién va y qué le preguntó.</p>
+                {agentWa
+                  ? <a className="btn-ghost" target="_blank" rel="noopener" href={`https://wa.me/${agentWa}?text=${encodeURIComponent(briefing)}`}>Enviar ficha por WhatsApp</a>
+                  : <CopyBlock text={briefing} label="Copiar ficha" />}
+              </div>
+            )}
           </section>
         )}
 

@@ -1,7 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import type { Agency, Lead, Property, Vertical } from "../db/schema";
-import { availableSlots, formatSlot, isFree } from "../calendar";
+import { agentForProperty, availableSlots, formatSlot, isFree } from "../calendar";
 import { formatPrice, norm, sameType } from "../scoring";
 import type { TurnState } from "./types";
 
@@ -115,6 +115,7 @@ export function toolsFor(vertical: Vertical): Anthropic.Tool[] {
         input_schema: {
           type: "object",
           properties: {
+            property_ref: { type: "string", description: "Referencia del inmueble a visitar (para usar la agenda del agente que lo lleva)" },
             from_date: { type: "string", description: "AAAA-MM-DD desde el que buscar (por defecto, hoy)" },
             part_of_day: { type: "string", enum: ["morning", "afternoon"], description: "Si el cliente prefiere mañana o tarde" },
           },
@@ -233,7 +234,7 @@ const SearchInput = z.object({
   text: z.string().optional(),
 });
 const VisitInput = z.object({ property_ref: z.string().optional(), slot_start: z.string().optional(), preferred_time: z.string().optional() });
-const SlotsInput = z.object({ from_date: z.string().optional(), part_of_day: z.enum(["morning", "afternoon"]).optional() });
+const SlotsInput = z.object({ property_ref: z.string().optional(), from_date: z.string().optional(), part_of_day: z.enum(["morning", "afternoon"]).optional() });
 const HandoffInput = z.object({ reason: z.string().min(1), summary: z.string().min(1) });
 const GuestInfoInput = z.object({ property_ref: z.string().optional() });
 const IncidentInput = z.object({ property_ref: z.string().optional(), description: z.string().min(1), urgent: z.boolean() });
@@ -243,7 +244,13 @@ export function describeProperty(p: Property): string {
     const pets = p.petsAllowed === "si" ? "admite mascotas (suplemento)" : p.petsAllowed === "no" ? "no admite mascotas" : "mascotas: consultar";
     return `${p.ref} | ${p.title} | ${p.type} | hasta ${p.maxGuests} personas, ${p.areaM2} m² | ${p.town}${p.zone ? ` (${p.zone})` : ""} | ${p.features.join(", ")} | ${pets} | reservar: ${p.bookingUrl ?? "consultar con el equipo"}${p.description ? ` | ${p.description}` : ""}`;
   }
-  return `${p.ref} | ${p.title} | ${p.type} | ${formatPrice(p.price)} | ${p.bedrooms} dorm, ${p.bathrooms} baños, ${p.areaM2} m² | ${p.town} (${p.zone}) | ${p.features.join(", ")} | ${p.description}`;
+  const extra = [
+    p.communityFees && `gastos: ${p.communityFees}`,
+    p.ibi && `IBI: ${p.ibi}`,
+    p.touristLicense && `licencia turística: ${p.touristLicense}`,
+    p.bookingUrl && `anuncio: ${p.bookingUrl}`,
+  ].filter(Boolean).join(" | ");
+  return `${p.ref} | ${p.title} | ${p.type} | ${formatPrice(p.price)} | ${p.bedrooms} dorm, ${p.bathrooms} baños, ${p.areaM2} m² | ${p.town}${p.zone ? ` (${p.zone})` : ""} | ${p.features.join(", ")}${extra ? ` | ${extra}` : ""} | ${p.description}`;
 }
 
 export function findProperty(catalog: Property[], ref?: string): Property | undefined {
@@ -318,7 +325,9 @@ export async function executeTool(name: string, rawInput: unknown, ctx: ToolCont
       case "get_available_slots": {
         const f = SlotsInput.parse(rawInput);
         const from = f.from_date && /^\d{4}-\d{2}-\d{2}$/.test(f.from_date) ? new Date(`${f.from_date}T00:00:00Z`) : undefined;
-        const slots = await availableSlots(ctx.agency, { from, partOfDay: f.part_of_day, max: 4 });
+        const prop = findProperty(catalog, f.property_ref ?? ctx.lead.profile.property_ref);
+        const agent = await agentForProperty(ctx.agency.id, prop?.agentId);
+        const slots = await availableSlots(ctx.agency, { from, partOfDay: f.part_of_day, max: 4, agent });
         if (!slots.length) return { content: "No hay huecos libres en los próximos días con esa preferencia. Ofrece que el agente le proponga horario (schedule_visit solo con preferred_time).", isError: false };
         return {
           content: `Huecos libres (propón 2-3 al cliente con el día y la hora en su idioma; cada visita dura ${ctx.agency.visitMinutes} min):\n` +
@@ -329,15 +338,22 @@ export async function executeTool(name: string, rawInput: unknown, ctx: ToolCont
       case "schedule_visit": {
         const v = VisitInput.parse(rawInput);
         state.profilePatch.wants_visit = true;
+        const vprop = findProperty(catalog, v.property_ref ?? ctx.lead.profile.property_ref);
+        const vagent = await agentForProperty(ctx.agency.id, vprop?.agentId);
         if (v.slot_start) {
           const start = new Date(v.slot_start);
           if (Number.isNaN(start.getTime())) return { content: "slot_start no válido: usa uno de get_available_slots.", isError: true };
-          if (!(await isFree(ctx.agency, start))) return { content: "Ese hueco ya no está libre. Vuelve a consultar get_available_slots y ofrece otro.", isError: true };
+          if (!(await isFree(ctx.agency, start, vagent))) return { content: "Ese hueco ya no está libre. Vuelve a consultar get_available_slots y ofrece otro.", isError: true };
           const label = formatSlot(start, ctx.agency.timezone, ctx.lead.language);
-          state.visit = { propertyRef: v.property_ref, preferredTime: label, startsAt: start.toISOString() };
-          return { content: `Visita agendada: ${label}. Confírmaselo al cliente y dile que le escribirán para recordárselo.`, isError: false };
+          state.visit = { propertyRef: vprop?.ref ?? v.property_ref, preferredTime: label, startsAt: start.toISOString(), agentId: vagent?.id };
+          return {
+            content: ctx.agency.ownerApproval
+              ? `Visita reservada para ${label}${vagent ? ` con ${vagent.name}` : ""}, PENDIENTE de confirmar con el propietario. Díselo así al cliente: queda reservada y le confirmaréis en breve. No la des por confirmada.`
+              : `Visita agendada: ${label}${vagent ? ` con ${vagent.name}` : ""}. Confírmaselo al cliente y dile que le escribirán para recordárselo.`,
+            isError: false,
+          };
         }
-        state.visit = { propertyRef: v.property_ref, preferredTime: v.preferred_time || "a convenir" };
+        state.visit = { propertyRef: vprop?.ref ?? v.property_ref, preferredTime: v.preferred_time || "a convenir", agentId: vagent?.id };
         return { content: "Solicitud de visita registrada sin hora. Un agente le propondrá horario pronto.", isError: false };
       }
       case "get_guest_info": {

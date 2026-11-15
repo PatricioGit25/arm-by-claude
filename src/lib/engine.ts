@@ -147,8 +147,14 @@ async function applyTurn(agency: Agency, lead: Lead, out: AgentOutput, catalog: 
     await db.insert(visits).values({
       agencyId: agency.id, leadId: lead.id, propertyId: prop?.id, preferredTime: state.visit.preferredTime,
       scheduledAt: startsAt, endsAt: startsAt ? new Date(startsAt.getTime() + agency.visitMinutes * 60000) : null,
-      status: startsAt ? "agendada" : "pendiente",
+      status: startsAt ? (agency.ownerApproval ? "por_confirmar" : "agendada") : "pendiente",
+      agentId: state.visit.agentId ?? prop?.agentId ?? null,
     });
+    if (startsAt && agency.ownerApproval) {
+      await notify(agency, lead, "visit",
+        `📅 Confirmar con el propietario: ${prop?.title ?? "visita"}`,
+        `${contact.name ?? lead.name ?? "Cliente"} quiere visitar${prop ? ` ${prop.ref} · ${prop.title}` : ""} el ${state.visit.preferredTime}. Pide permiso al propietario y confírmalo en la ficha.`);
+    }
     await logEvent(agency.id, lead.id, "visit_requested", { ref: prop?.ref, when: state.visit.preferredTime });
     stage = "visita";
   }
@@ -182,6 +188,9 @@ async function applyTurn(agency: Agency, lead: Lead, out: AgentOutput, catalog: 
   }
 
   patch.stage = stage;
+  // El cliente queda asignado al agente del inmueble que le interesa.
+  const interest = catalog.find((p) => p.ref === (state.visit?.propertyRef ?? profile.property_ref));
+  if (!lead.agentId && (state.visit?.agentId || interest?.agentId)) patch.agentId = state.visit?.agentId ?? interest?.agentId ?? null;
   if (AI_STAGES.includes(stage)) patch.nextFollowupAt = new Date(Date.now() + FOLLOWUP_GAPS[0] * DAY);
   else patch.nextFollowupAt = null;
   if (stage !== lead.stage) await logEvent(agency.id, lead.id, "stage_changed", { from: lead.stage, to: stage });

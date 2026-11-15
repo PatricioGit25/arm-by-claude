@@ -9,7 +9,7 @@ import { formatPrice, norm, scoreLead } from "../scoring";
 import { searchCatalog } from "./tools";
 import { runMockVacationAgent } from "./mock-vacation";
 import { runMockCommercialAgent } from "./mock-commercial";
-import { availableSlots, formatSlot } from "../calendar";
+import { agentForProperty, availableSlots, formatSlot } from "../calendar";
 import { emptyTurnState, type AgentInput, type AgentOutput } from "./types";
 
 type Key =
@@ -139,7 +139,8 @@ export async function runMockAgent(input: AgentInput): Promise<AgentOutput> {
   Object.assign(state.contactPatch, Object.fromEntries(Object.entries({ name, phone, email }).filter(([, v]) => v)));
   Object.assign(state.profilePatch, profilePatch);
 
-  const refMatch = text.toUpperCase().match(/\b[A-Z]{2}-\d{3}\b/);
+  const refInCatalog = catalog.find((p) => text.toUpperCase().includes(p.ref.toUpperCase()))?.ref;
+  const refMatch = refInCatalog ? [refInCatalog] : text.toUpperCase().match(/\b[A-Z]{2}-\d{3}\b/);
   const profile: LeadProfile = { ...lead.profile, ...state.profilePatch };
   const hasContact = !!(lead.phone || lead.email || state.contactPatch.phone || state.contactPatch.email);
   const { score } = scoreLead(profile, { inboundCount: lead.inboundCount, hasContact });
@@ -166,7 +167,7 @@ export async function runMockAgent(input: AgentInput): Promise<AgentOutput> {
     if (found.length) {
       parts.push(t.matches);
       for (const p of found) {
-        parts.push(`• ${p.ref}: ${p.title} — ${formatPrice(p.price)}`);
+        parts.push(`• ${p.ref}: ${p.title} — ${formatPrice(p.price)}${p.bookingUrl ? `\n  ${p.bookingUrl}` : ""}`);
         state.shownRefs.push(p.ref);
       }
     } else if (profile.budget_max && profile.property_type) parts.push(t.no_matches);
@@ -179,12 +180,15 @@ export async function runMockAgent(input: AgentInput): Promise<AgentOutput> {
     state.visit = { propertyRef: lead.profile.property_ref ?? refMatch?.[0] ?? lastShownRef(history), preferredTime: label, startsAt: pick };
     state.profilePatch.offered_slots = [];
     state.profilePatch.wants_visit = true;
-    parts.push(t.booked.replace("{time}", label));
+    parts.push(agency.ownerApproval
+      ? ({ es: `¡Perfecto! Te reservo el ${label}. Lo confirmo con el propietario y te escribo enseguida. 🏡`, sv: `Perfekt! Jag reserverar ${label}. Jag bekräftar med ägaren och hör av mig strax. 🏡` } as Record<string, string>)[lang] ?? `Perfect! I've reserved ${label}. I'll confirm with the owner and get back to you shortly. 🏡`
+      : t.booked.replace("{time}", label));
   } else if (profilePatch.wants_visit) {
     const when = visitTime(text);
     const partOfDay = /tarde|afternoon|eftermiddag|nachmittag|apr[eè]s-midi/i.test(text) ? "afternoon" : /por la mañana|morning|förmiddag|vormittag|matin/i.test(text) ? "morning" : undefined;
-    const slots = await availableSlots(agency, { max: 3, partOfDay }).catch(() => []);
-    const ref = refMatch?.[0] ?? lastShownRef(history);
+    const ref = refMatch?.[0] ?? lead.profile.property_ref ?? lastShownRef(history);
+    const agent = await agentForProperty(agency.id, catalog.find((p) => p.ref === ref)?.agentId).catch(() => null);
+    const slots = await availableSlots(agency, { max: 3, partOfDay, agent }).catch(() => []);
     if (slots.length) {
       state.profilePatch.offered_slots = slots.map((s) => s.start.toISOString());
       if (ref) state.profilePatch.property_ref = ref;
