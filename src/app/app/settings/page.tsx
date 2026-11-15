@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { headers } from "next/headers";
 import { requireUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
-import { agents, users } from "@/lib/db/schema";
+import { agents, users, type Lang } from "@/lib/db/schema";
 import { ActionForm } from "@/components/ActionForm";
 import { addAgentUserAction, changePasswordAction, saveAgentAction, updateSettingsAction } from "@/app/actions";
 
@@ -103,11 +103,11 @@ export default async function SettingsPage() {
         {agency.vertical === "venta" && (
           <section className="card">
             <h2 className="font-semibold">Agentes</h2>
-            <p className="mb-3 mt-0.5 text-xs text-mute">Cada inmueble tiene su agente. Los clientes y las visitas se asignan solos al agente del inmueble, usando su calendario. Outlook: Configuración → Calendario → Calendarios compartidos → Publicar un calendario → enlace ICS.</p>
+            <p className="mb-3 mt-0.5 text-xs text-mute">Cada visita se asigna sola: primero el agente responsable del inmueble, después quien lo captó y por último el suplente, siempre que hable el idioma del cliente, el precio esté dentro de su tope y tenga el hueco libre en su calendario. Outlook: Configuración → Calendario → Calendarios compartidos → Publicar un calendario → enlace ICS.</p>
             <div className="space-y-3">
               {listingAgents.map((a) => (
                 <details key={a.id} className="rounded-xl border border-line p-3">
-                  <summary className="cursor-pointer text-sm font-medium">{a.name} <span className="font-normal text-mute">· {a.calendarIcsUrl ? "📅 calendario conectado" : "sin calendario"}</span></summary>
+                  <summary className="cursor-pointer text-sm font-medium">{a.name} <span className="font-normal text-mute">· {a.calendarIcsUrl ? "📅 calendario conectado" : "sin calendario"}{!a.doesVisits ? " · no hace visitas" : ""}{a.languages?.length ? ` · ${a.languages.join("/").toUpperCase()}` : ""}{a.maxPrice ? ` · hasta ${a.maxPrice.toLocaleString("es-ES")} €` : ""}{a.backup ? " · suplente" : ""}</span></summary>
                   <ActionForm action={saveAgentAction} submit="Guardar" className="mt-3 space-y-2">
                     <input type="hidden" name="id" value={a.id} />
                     <input name="name" defaultValue={a.name} className="input" aria-label="Nombre" />
@@ -116,6 +116,19 @@ export default async function SettingsPage() {
                       <input name="email" defaultValue={a.email ?? ""} className="input" placeholder="Email" aria-label="Email" />
                     </div>
                     <input name="calendarIcsUrl" defaultValue={a.calendarIcsUrl ?? ""} className="input" placeholder="Enlace ICS de su calendario (Outlook o Google)" aria-label="Calendario" />
+                    <input type="hidden" name="langsSent" value="1" />
+                    <fieldset className="space-y-2 rounded-lg bg-panel2 p-2.5 text-sm">
+                      <legend className="px-1 text-xs text-mute">Visitas</legend>
+                      <label className="flex items-center gap-2"><input type="checkbox" name="doesVisits" defaultChecked={a.doesVisits} /> Hace visitas</label>
+                      <div className="flex flex-wrap gap-x-3 gap-y-1">
+                        <span className="text-xs text-mute">Idiomas:</span>
+                        {AGENT_LANGS.map(([code, label]) => (
+                          <label key={code} className="flex items-center gap-1"><input type="checkbox" name="lang" value={code} defaultChecked={!a.languages?.length || a.languages.includes(code)} /> {label}</label>
+                        ))}
+                      </div>
+                      <label className="flex items-center gap-2"><span className="text-xs text-mute">Solo inmuebles hasta</span><input name="maxPrice" inputMode="numeric" defaultValue={a.maxPrice ?? ""} className="input w-32 py-1" placeholder="sin límite" aria-label="Precio máximo" /> €</label>
+                      <label className="flex items-start gap-2"><input type="checkbox" name="backup" defaultChecked={a.backup} className="mt-1" /> <span>Suplente<br /><span className="text-xs text-mute">Hace la visita cuando el agente del inmueble no habla el idioma del cliente o no está libre.</span></span></label>
+                    </fieldset>
                   </ActionForm>
                 </details>
               ))}
@@ -145,3 +158,5 @@ export default async function SettingsPage() {
     </div>
   );
 }
+
+const AGENT_LANGS: [Lang, string][] = [["es", "Español"], ["en", "Inglés"], ["sv", "Sueco"], ["de", "Alemán"], ["fr", "Francés"]];

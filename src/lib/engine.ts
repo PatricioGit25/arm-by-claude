@@ -6,7 +6,7 @@ import { and, asc, desc, eq, inArray, isNotNull, lte, sql } from "drizzle-orm";
 import { getDb } from "./db";
 import {
   agencies, events, leads, messages, notifications, properties, visits,
-  type Agency, type Lead, type LeadProfile, type Property, type Stage,
+  type Agency, type Lang, type Lead, type LeadProfile, type Property, type Stage,
 } from "./db/schema";
 import { runClaudeAgent, hasClaude, writeFollowup } from "./agent/claude";
 import { runMockAgent } from "./agent/mock";
@@ -14,6 +14,7 @@ import { describeProperty } from "./agent/tools";
 import type { AgentOutput } from "./agent/types";
 import { sendWhatsAppText, whatsappEnabled } from "./channels/whatsapp";
 import { formatPrice, nextStage, propertyMatches, scoreLead } from "./scoring";
+import { isFree, visitAgentsFor } from "./calendar";
 
 const DAY = 86_400_000;
 /** Días entre seguimientos: día 3, 10, 30 y 60 desde el último contacto. */
@@ -144,6 +145,12 @@ async function applyTurn(agency: Agency, lead: Lead, out: AgentOutput, catalog: 
   if (state.visit) {
     const prop = catalog.find((p) => p.ref === state.visit!.propertyRef);
     const startsAt = state.visit.startsAt ? new Date(state.visit.startsAt) : null;
+    if (!state.visit.agentId && prop && !vacation) {
+      // Elige quién hace la visita (idioma, tope de precio, suplentes) y que esté libre.
+      const candidates = await visitAgentsFor(agency.id, prop, (contact.language ?? lead.language) as Lang);
+      for (const a of candidates) if (!startsAt || (await isFree(agency, startsAt, a))) { state.visit.agentId = a.id; break; }
+      state.visit.agentId ??= candidates[0]?.id;
+    }
     await db.insert(visits).values({
       agencyId: agency.id, leadId: lead.id, propertyId: prop?.id, preferredTime: state.visit.preferredTime,
       scheduledAt: startsAt, endsAt: startsAt ? new Date(startsAt.getTime() + agency.visitMinutes * 60000) : null,
@@ -190,7 +197,8 @@ async function applyTurn(agency: Agency, lead: Lead, out: AgentOutput, catalog: 
   patch.stage = stage;
   // El cliente queda asignado al agente del inmueble que le interesa.
   const interest = catalog.find((p) => p.ref === (state.visit?.propertyRef ?? profile.property_ref));
-  if (!lead.agentId && (state.visit?.agentId || interest?.agentId)) patch.agentId = state.visit?.agentId ?? interest?.agentId ?? null;
+  if (state.visit?.agentId) patch.agentId = state.visit.agentId;
+  else if (!lead.agentId && interest && !vacation) patch.agentId = (await visitAgentsFor(agency.id, interest, (contact.language ?? lead.language) as Lang))[0]?.id ?? interest.agentId ?? null;
   if (AI_STAGES.includes(stage)) patch.nextFollowupAt = new Date(Date.now() + FOLLOWUP_GAPS[0] * DAY);
   else patch.nextFollowupAt = null;
   if (stage !== lead.stage) await logEvent(agency.id, lead.id, "stage_changed", { from: lead.stage, to: stage });

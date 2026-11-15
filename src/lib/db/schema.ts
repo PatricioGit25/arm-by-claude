@@ -203,6 +203,10 @@ export const agents = pgTable("agents", {
   phone: text("phone"),
   email: text("email"),
   calendarIcsUrl: text("calendar_ics_url"), // calendario publicado (Outlook/Google), solo lectura
+  languages: jsonb("languages").$type<Lang[]>(), // idiomas en los que puede hacer visitas (null = todos)
+  maxPrice: integer("max_price"), // solo visita inmuebles hasta este precio (null = sin límite)
+  doesVisits: boolean("does_visits").notNull().default(true),
+  backup: boolean("backup").notNull().default(false), // suplente cuando el agente del inmueble no puede
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

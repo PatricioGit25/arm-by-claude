@@ -69,9 +69,21 @@ export async function importCatalog(agency: Agency, raw: string) {
     }
     return a;
   };
+  const LANG_CODES: Record<string, string> = { es: "es", espanol: "es", español: "es", spanish: "es", en: "en", ingles: "en", inglés: "en", english: "en", sv: "sv", sueco: "sv", swedish: "sv", de: "de", aleman: "de", alemán: "de", german: "de", fr: "fr", frances: "fr", francés: "fr", french: "fr" };
   for (const s of staff) {
     const name = str(s.nombre ?? s.name);
-    if (name) await ensureAgent(name, str(s.telefono ?? s.phone), str(s.email));
+    if (!name) continue;
+    const a = await ensureAgent(name, str(s.telefono ?? s.phone), str(s.email));
+    const set: Partial<typeof agents.$inferInsert> = {};
+    const langs = s.idiomas ?? s.languages;
+    if (langs !== undefined) {
+      const list = (Array.isArray(langs) ? langs : str(langs).split(/[;,\s]+/)).map((l) => LANG_CODES[str(l).toLowerCase()]).filter(Boolean);
+      set.languages = list.length ? ([...new Set(list)] as typeof a.languages) : null;
+    }
+    if (s.precio_max !== undefined) set.maxPrice = int(s.precio_max) || null;
+    if (s.hace_visitas !== undefined) set.doesVisits = s.hace_visitas !== false && !/^(no|false|0)$/i.test(str(s.hace_visitas));
+    if (s.suplente !== undefined) set.backup = s.suplente === true || /^(si|sí|true|1)$/i.test(str(s.suplente));
+    if (Object.keys(set).length) await db.update(agents).set(set).where(eq(agents.id, a.id));
   }
   for (const r of rows) {
     const ref = str(r.ref ?? r.referencia);

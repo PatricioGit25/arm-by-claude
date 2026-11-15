@@ -1,7 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
-import type { Agency, Lead, Property, Vertical } from "../db/schema";
-import { agentForProperty, availableSlots, formatSlot, isFree } from "../calendar";
+import type { Agency, Agent, Lang, Lead, Property, Vertical } from "../db/schema";
+import { formatSlot, isFree, slotsForVisit, visitAgentsFor } from "../calendar";
 import { formatPrice, norm, sameType } from "../scoring";
 import type { TurnState } from "./types";
 
@@ -327,8 +327,8 @@ export async function executeTool(name: string, rawInput: unknown, ctx: ToolCont
         const f = SlotsInput.parse(rawInput);
         const from = f.from_date && /^\d{4}-\d{2}-\d{2}$/.test(f.from_date) ? new Date(`${f.from_date}T00:00:00Z`) : undefined;
         const prop = findProperty(catalog, f.property_ref ?? ctx.lead.profile.property_ref);
-        const agent = await agentForProperty(ctx.agency.id, prop?.agentId);
-        const slots = await availableSlots(ctx.agency, { from, partOfDay: f.part_of_day, max: 4, agent });
+        const lang = (state.contactPatch.language ?? ctx.lead.language) as Lang;
+        const { slots } = await slotsForVisit(ctx.agency, await visitAgentsFor(ctx.agency.id, prop, lang), { from, partOfDay: f.part_of_day, max: 4 });
         if (!slots.length) return { content: "No hay huecos libres en los próximos días con esa preferencia. Ofrece que el agente le proponga horario (schedule_visit solo con preferred_time).", isError: false };
         return {
           content: `Huecos libres (propón 2-3 al cliente con el día y la hora en su idioma; cada visita dura ${ctx.agency.visitMinutes} min):\n` +
@@ -340,11 +340,14 @@ export async function executeTool(name: string, rawInput: unknown, ctx: ToolCont
         const v = VisitInput.parse(rawInput);
         state.profilePatch.wants_visit = true;
         const vprop = findProperty(catalog, v.property_ref ?? ctx.lead.profile.property_ref);
-        const vagent = await agentForProperty(ctx.agency.id, vprop?.agentId);
+        const candidates = await visitAgentsFor(ctx.agency.id, vprop, (state.contactPatch.language ?? ctx.lead.language) as Lang);
+        let vagent: Agent | null = candidates[0] ?? null;
         if (v.slot_start) {
           const start = new Date(v.slot_start);
           if (Number.isNaN(start.getTime())) return { content: "slot_start no válido: usa uno de get_available_slots.", isError: true };
-          if (!(await isFree(ctx.agency, start, vagent))) return { content: "Ese hueco ya no está libre. Vuelve a consultar get_available_slots y ofrece otro.", isError: true };
+          let free = false;
+          for (const a of candidates.length ? candidates : [null]) if (await isFree(ctx.agency, start, a)) { vagent = a; free = true; break; }
+          if (!free) return { content: "Ese hueco ya no está libre. Vuelve a consultar get_available_slots y ofrece otro.", isError: true };
           const label = formatSlot(start, ctx.agency.timezone, ctx.lead.language);
           state.visit = { propertyRef: vprop?.ref ?? v.property_ref, preferredTime: label, startsAt: start.toISOString(), agentId: vagent?.id };
           return {

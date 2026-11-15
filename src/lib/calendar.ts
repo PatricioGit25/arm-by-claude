@@ -216,3 +216,41 @@ export async function agentForProperty(agencyId: string, agentId?: string | null
   const db = await getDb();
   return (await db.select().from(agents).where(and(eq(agents.agencyId, agencyId), eq(agents.id, agentId))))[0] ?? null;
 }
+
+/**
+ * Quién puede hacer la visita de un inmueble, por orden: el agente responsable,
+ * el contacto adicional (quien lo captó) y los suplentes. Se descartan los que
+ * no hacen visitas, no hablan el idioma del cliente o tienen un tope de precio
+ * por debajo del inmueble.
+ */
+export async function visitAgentsFor(
+  agencyId: string,
+  prop: { agentId: string | null; extraAgentId?: string | null; price: number } | undefined,
+  lang: Lang,
+): Promise<Agent[]> {
+  const db = await getDb();
+  const team = await db.select().from(agents).where(eq(agents.agencyId, agencyId));
+  if (!team.length) return [];
+  const byId = new Map(team.map((a) => [a.id, a]));
+  const order = [prop?.agentId, prop?.extraAgentId].map((id) => (id ? byId.get(id) : undefined)).filter((a): a is Agent => !!a);
+  for (const a of team.filter((t) => t.backup).sort((x, y) => x.createdAt.getTime() - y.createdAt.getTime())) order.push(a);
+  const seen = new Set<string>();
+  const ok = (a: Agent) =>
+    a.doesVisits &&
+    (!a.languages?.length || a.languages.includes(lang)) &&
+    (!a.maxPrice || !prop?.price || prop.price <= a.maxPrice);
+  const eligible = order.filter((a) => !seen.has(a.id) && seen.add(a.id) && ok(a));
+  if (eligible.length) return eligible;
+  const owner = prop?.agentId ? byId.get(prop.agentId) : undefined;
+  return owner ? [owner] : [];
+}
+
+/** Primer agente posible con huecos libres (y sus huecos). */
+export async function slotsForVisit(agency: Agency, agentsList: Agent[], opts: Omit<Parameters<typeof availableSlots>[1], "agent">) {
+  if (!agentsList.length) return { agent: null as Agent | null, slots: await availableSlots(agency, opts) };
+  for (const agent of agentsList) {
+    const slots = await availableSlots(agency, { ...opts, agent });
+    if (slots.length) return { agent, slots };
+  }
+  return { agent: agentsList[0], slots: [] };
+}

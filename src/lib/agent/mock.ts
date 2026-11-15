@@ -9,7 +9,7 @@ import { formatPrice, norm, scoreLead } from "../scoring";
 import { searchCatalog } from "./tools";
 import { runMockVacationAgent } from "./mock-vacation";
 import { runMockCommercialAgent } from "./mock-commercial";
-import { agentForProperty, availableSlots, formatSlot } from "../calendar";
+import { formatSlot, slotsForVisit, visitAgentsFor } from "../calendar";
 import { emptyTurnState, type AgentInput, type AgentOutput } from "./types";
 
 type Key =
@@ -187,8 +187,8 @@ export async function runMockAgent(input: AgentInput): Promise<AgentOutput> {
     const when = visitTime(text);
     const partOfDay = /tarde|afternoon|eftermiddag|nachmittag|apr[eè]s-midi/i.test(text) ? "afternoon" : /por la mañana|morning|förmiddag|vormittag|matin/i.test(text) ? "morning" : undefined;
     const ref = refMatch?.[0] ?? lead.profile.property_ref ?? lastShownRef(history);
-    const agent = await agentForProperty(agency.id, catalog.find((p) => p.ref === ref)?.agentId).catch(() => null);
-    const slots = await availableSlots(agency, { max: 3, partOfDay, agent }).catch(() => []);
+    const candidates = await visitAgentsFor(agency.id, catalog.find((p) => p.ref === ref), lang).catch(() => []);
+    const { slots } = await slotsForVisit(agency, candidates, { max: 3, partOfDay }).catch(() => ({ slots: [] }));
     if (slots.length) {
       state.profilePatch.offered_slots = slots.map((s) => s.start.toISOString());
       if (ref) state.profilePatch.property_ref = ref;

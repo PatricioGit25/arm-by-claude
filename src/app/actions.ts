@@ -193,6 +193,10 @@ export async function saveAgentAction(_: FormState, form: FormData): Promise<For
   const values = {
     name, phone: String(form.get("phone") ?? "").trim() || null, email: String(form.get("email") ?? "").trim() || null,
     calendarIcsUrl: String(form.get("calendarIcsUrl") ?? "").trim() || null,
+    languages: form.has("langsSent") ? ((): Lang[] | null => { const l = form.getAll("lang").map(String).filter((x): x is Lang => (LANGS as string[]).includes(x)); return l.length && l.length < LANGS.length ? l : null; })() : undefined,
+    maxPrice: form.has("maxPrice") ? Number(String(form.get("maxPrice")).replace(/[^\d]/g, "")) || null : undefined,
+    doesVisits: form.has("langsSent") ? form.get("doesVisits") === "on" : undefined,
+    backup: form.has("langsSent") ? form.get("backup") === "on" : undefined,
   };
   if (id) await db.update(agents).set(values).where(and(eq(agents.id, id), eq(agents.agencyId, agency.id)));
   else await db.insert(agents).values({ ...values, agencyId: agency.id });
