@@ -245,12 +245,17 @@ export async function updateSettingsAction(_: FormState, form: FormData): Promis
   if (user.role !== "owner") return { error: "Solo el propietario puede cambiar los ajustes" };
   const db = await getDb();
   const threshold = Math.max(30, Math.min(100, Number(form.get("threshold")) || 70));
+  const waId = String(form.get("waId") ?? "").replace(/\D/g, "") || null;
+  if (waId && (await db.select({ id: agencies.id }).from(agencies).where(eq(agencies.waPhoneNumberId, waId))).some((a) => a.id !== agency.id)) {
+    return { error: "Ese número de WhatsApp ya está conectado a otra cuenta del ARM" };
+  }
   await db.update(agencies).set({
     name: String(form.get("name") ?? agency.name).trim() || agency.name,
     town: String(form.get("town") ?? "").trim(),
     assistantName: String(form.get("assistant") ?? "").trim() || "Sofía",
     agentPhone: String(form.get("agentPhone") ?? "").trim() || null,
-    waPhoneNumberId: String(form.get("waId") ?? "").trim() || null,
+    waPhoneNumberId: waId,
+    waTestNumbers: form.has("waTestNumbers") ? String(form.get("waTestNumbers") ?? "").trim() || null : agency.waTestNumbers,
     handoffThreshold: threshold,
     vertical: (["venta", "vacacional", "comercial"].includes(String(form.get("vertical"))) ? String(form.get("vertical")) : agency.vertical) as Vertical,
     knowledge: String(form.get("knowledge") ?? "").trim().slice(0, 20000),

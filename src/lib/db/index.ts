@@ -128,6 +128,7 @@ ALTER TABLE agents ADD COLUMN IF NOT EXISTS max_price integer;
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS does_visits boolean NOT NULL DEFAULT true;
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS backup boolean NOT NULL DEFAULT false;
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS backup_rank integer NOT NULL DEFAULT 1;
+ALTER TABLE agencies ADD COLUMN IF NOT EXISTS wa_test_numbers text;
 ALTER TABLE agencies ADD COLUMN IF NOT EXISTS feed_url text;
 ALTER TABLE agencies ADD COLUMN IF NOT EXISTS feed_synced_at timestamptz;
 ALTER TABLE agencies ADD COLUMN IF NOT EXISTS feed_status text;

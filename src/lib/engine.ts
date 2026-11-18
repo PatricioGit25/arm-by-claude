@@ -30,6 +30,8 @@ export interface InboundInput {
   phone?: string;
   email?: string;
   source?: string;
+  /** Guarda el mensaje y avisa al equipo, pero la IA no contesta (modo prueba). */
+  noAutoReply?: boolean;
 }
 
 export async function getAgencyBySlug(slug: string) {
@@ -91,6 +93,10 @@ export async function handleInbound(input: InboundInput): Promise<{ lead: Lead; 
     lostReason: null,
   }).where(eq(leads.id, lead.id)).returning();
 
+  if (input.noAutoReply) {
+    await notify(agency, lead, "message", `WhatsApp de ${lead.name ?? input.phone ?? "un cliente"} (modo prueba: sin respuesta automática)`, input.text);
+    return { lead, reply: null };
+  }
   if (lead.aiPaused) {
     await notify(agency, lead, "message", `Nuevo mensaje de ${lead.name ?? "un cliente"}`, input.text);
     return { lead, reply: null };

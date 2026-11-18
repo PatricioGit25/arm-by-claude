@@ -74,6 +74,7 @@ export const agencies = pgTable("agencies", {
   handoffThreshold: integer("handoff_threshold").notNull().default(70),
   agentPhone: text("agent_phone"),
   waPhoneNumberId: text("wa_phone_number_id"),
+  waTestNumbers: text("wa_test_numbers"), // modo prueba: la IA solo responde sola a estos números
   assistantName: text("assistant_name").notNull().default("Sofía"),
   vertical: text("vertical").$type<Vertical>().notNull().default("venta"),
   knowledge: text("knowledge").notNull().default(""), // normas y preguntas frecuentes

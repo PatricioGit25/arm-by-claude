@@ -38,7 +38,18 @@ export default async function SettingsPage() {
             <p className="mt-1 text-xs text-mute">Más bajo = te llegan más leads, pero menos filtrados.</p>
           </div>
           <div><label className="label">WhatsApp del agente (para avisos)</label><input name="agentPhone" className="input" defaultValue={agency.agentPhone ?? ""} placeholder="+34 600 000 000" /></div>
-          <div><label className="label">WhatsApp Business · phone_number_id</label><input name="waId" className="input" defaultValue={agency.waPhoneNumberId ?? ""} /></div>
+          <fieldset className="space-y-3 rounded-xl border border-line p-3">
+            <legend className="px-1 text-sm font-semibold">💬 WhatsApp Business</legend>
+            <p className="text-xs text-mute">
+              {!process.env.WHATSAPP_TOKEN ? "⚪ Falta configurar WHATSAPP_TOKEN en el servidor." : agency.waPhoneNumberId ? "🟢 Conectado: los mensajes a vuestro número llegan al ARM." : "🟡 Falta el identificador del número (Meta → WhatsApp → Configuración de la API)."}
+            </p>
+            <div><label className="label">Identificador del número (phone_number_id)</label><input name="waId" inputMode="numeric" className="input" defaultValue={agency.waPhoneNumberId ?? ""} placeholder="123456789012345" /></div>
+            <div>
+              <label className="label">Modo prueba: la IA solo contesta sola a estos números</label>
+              <textarea name="waTestNumbers" rows={2} className="input" defaultValue={agency.waTestNumbers ?? ""} placeholder="+34 600 000 000, +46 70 000 00 00" />
+              <p className="mt-1 text-xs text-mute">Mientras probáis, poned aquí vuestros móviles. Los mensajes de otros números se guardan y os avisan, pero la IA no les contesta. Vacío = la IA contesta a todos.</p>
+            </div>
+          </fieldset>
           {agency.vertical !== "vacacional" && (
             <fieldset className="space-y-3 rounded-xl border border-line p-3">
               <legend className="px-1 text-sm font-semibold">📅 Agenda de visitas</legend>

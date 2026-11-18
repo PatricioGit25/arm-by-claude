@@ -16,6 +16,10 @@ export async function GET() {
     AUTH_SECRET: process.env.AUTH_SECRET ? "configurada" : "FALTA",
     CRON_SECRET: process.env.CRON_SECRET ? "configurada" : "FALTA",
     ANTHROPIC_API_KEY: hasClaude() ? "configurada (IA real)" : "no configurada (modo demo)",
+    WHATSAPP_TOKEN: process.env.WHATSAPP_TOKEN ? "configurada" : "no configurada",
+    WHATSAPP_VERIFY_TOKEN: process.env.WHATSAPP_VERIFY_TOKEN ? "configurada" : "no configurada",
+    WHATSAPP_APP_SECRET: process.env.WHATSAPP_APP_SECRET ? "configurada (webhook firmado)" : "no configurada",
+    ELEVENLABS_API_KEY: process.env.ELEVENLABS_API_KEY ? "configurada (notas de voz)" : "no configurada",
   };
   try {
     const db = await getDb();

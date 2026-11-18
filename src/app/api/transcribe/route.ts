@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { currentUser } from "@/lib/auth";
+import { transcribe } from "@/lib/stt";
 
 export const dynamic = "force-dynamic";
 
@@ -14,14 +15,10 @@ export async function POST(req: Request) {
   if (!(audio instanceof Blob) || audio.size === 0) return NextResponse.json({ error: "No llegó el audio" }, { status: 400 });
   if (audio.size > 15 * 1024 * 1024) return NextResponse.json({ error: "Audio demasiado largo" }, { status: 413 });
 
-  const out = new FormData();
-  out.append("model_id", process.env.ELEVENLABS_STT_MODEL || "scribe_v1");
-  out.append("file", audio, "nota.webm");
-  const res = await fetch("https://api.elevenlabs.io/v1/speech-to-text", { method: "POST", headers: { "xi-api-key": key }, body: out });
-  if (!res.ok) {
-    console.error("[ARM] Error de transcripción:", res.status, await res.text());
+  try {
+    return NextResponse.json({ text: await transcribe(audio, "nota.webm") });
+  } catch (err) {
+    console.error("[ARM] Error de transcripción:", err);
     return NextResponse.json({ error: "No se pudo transcribir el audio" }, { status: 502 });
   }
-  const data = (await res.json()) as { text?: string };
-  return NextResponse.json({ text: (data.text ?? "").trim() });
 }
